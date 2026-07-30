@@ -1,0 +1,167 @@
+#!/bin/bash
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# build_context — Extracts variables from the NP notification context and
+# prepares the Terraform execution environment for service actions.
+#
+# For link actions, also extracts LINK_* variables consumed by
+# build_permissions_context in the next workflow step.
+# ---------------------------------------------------------------------------
+
+# --- Parse service context --------------------------------------------------
+
+SERVICE_ID=$(echo "$CONTEXT" | jq -r '.service.id')
+SERVICE_NAME=$(echo "$CONTEXT" | jq -r '.service.name // ""')
+SERVICE_NAME="${SERVICE_NAME:-svc-${SERVICE_ID}}"
+
+# Merge .service.attributes with action .parameters.
+# CRITICAL: On the first "create" action, .service.attributes is empty or incomplete.
+# The user-provided values are in .parameters. The jq * operator merges objects
+# with the right-hand side taking precedence, so parameters always win.
+SERVICE_ATTRS=$(echo "$CONTEXT" | jq -r '(.service.attributes // {}) * (.parameters // {})')
+
+BILLING_MODE=$(echo "$SERVICE_ATTRS"        | jq -r '.billing_mode        // "PAY_PER_REQUEST"')
+HASH_KEY=$(echo "$SERVICE_ATTRS"            | jq -r '.hash_key            // ""')
+HASH_KEY_TYPE=$(echo "$SERVICE_ATTRS"       | jq -r '.hash_key_type       // "S"')
+RANGE_KEY=$(echo "$SERVICE_ATTRS"           | jq -r '.range_key           // ""')
+RANGE_KEY_TYPE=$(echo "$SERVICE_ATTRS"      | jq -r '.range_key_type      // "S"')
+READ_CAPACITY=$(echo "$SERVICE_ATTRS"       | jq -r '.read_capacity       // 5')
+WRITE_CAPACITY=$(echo "$SERVICE_ATTRS"      | jq -r '.write_capacity      // 5')
+DELETION_PROTECTION=$(echo "$SERVICE_ATTRS" | jq -r '.deletion_protection // false')
+TTL_ENABLED=$(echo "$SERVICE_ATTRS"         | jq -r '.ttl_enabled         // false')
+TTL_ATTRIBUTE_NAME=$(echo "$SERVICE_ATTRS"  | jq -r '.ttl_attribute_name  // "expires_at"')
+GLOBAL_SECONDARY_INDEXES=$(echo "$SERVICE_ATTRS" | jq -c '.global_secondary_indexes // []')
+
+if [ -z "$HASH_KEY" ]; then
+  echo "ERROR: hash_key is required" >&2
+  exit 1
+fi
+
+# --- Table name: compute once, then freeze ----------------------------------
+# CRITICAL: the table name must be IMMUTABLE after the first create.
+# aws_dynamodb_table.name is a ForceNew attribute, so any change triggers
+# destroy+create — and destroying a table takes every item with it. Renaming
+# the service in nullplatform must never reach the table name.
+#
+# To prevent renames of the service (or stale parameters) from changing the
+# computed name, we read it back from .service.attributes.table_name on
+# subsequent runs (it's written by write_service_outputs after create).
+
+EXISTING_TABLE_NAME=$(echo "$CONTEXT" | jq -r '.service.attributes.table_name // ""')
+if [ -n "$EXISTING_TABLE_NAME" ] && [ "$EXISTING_TABLE_NAME" != "null" ]; then
+  TABLE_NAME="$EXISTING_TABLE_NAME"
+  echo "Using existing table_name from service attributes: ${TABLE_NAME}"
+else
+  # DynamoDB allows [a-zA-Z0-9_.-] and up to 255 chars; we stay well below.
+  TABLE_NAME="np-$(echo "$SERVICE_NAME" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//;s/-*$//' | cut -c1-70)"
+  echo "Computed new table_name: ${TABLE_NAME}"
+fi
+
+# --- Read static config from values.yaml ------------------------------------
+# CRITICAL: $VALUES is a FILE PATH set by "np service workflow exec --values <path>",
+# NOT JSON content. Use yaml_value() to read individual keys.
+yaml_value() {
+  local key="$1" default="$2" file="$3"
+  local val
+  val=$(grep "^${key}:" "$file" 2>/dev/null | sed 's/^[^:]*: *//;s/^"//;s/"$//' | head -1)
+  echo "${val:-$default}"
+}
+
+AWS_PROFILE_VAL=$(yaml_value "aws_profile" "" "$VALUES")
+
+if [ -n "${AWS_PROFILE_VAL}" ] && [ -z "${AWS_PROFILE:-}" ]; then
+  export AWS_PROFILE="${AWS_PROFILE_VAL}"
+fi
+
+# --- Resolve AWS region from nullplatform provider --------------------------
+# We derive the account NRN from the service NRN by stripping everything from
+# :namespace= onward, then query the provider with stored_keys: [account.region].
+
+ACCOUNT_NRN=$(echo "$CONTEXT" | jq -r '.service.nrn // .entity_nrn // ""' | sed 's/:namespace=.*$//')
+
+if [ -z "$ACCOUNT_NRN" ]; then
+  echo "ERROR: could not derive account NRN from .service.nrn in context" >&2
+  exit 1
+fi
+
+NP_PROVIDERS=$(np provider list --nrn "$ACCOUNT_NRN" --format json --limit 100)
+
+echo "Resolving region for account: ${ACCOUNT_NRN}"
+
+ACCOUNT_PROVIDER_ID=$(echo "$NP_PROVIDERS" \
+  | jq -r '[(.results // [])[] | select((.data_source.stored_keys // []) | contains(["account.region"]))] | first | .id // ""')
+
+if [ -z "$ACCOUNT_PROVIDER_ID" ] || [ "$ACCOUNT_PROVIDER_ID" = "null" ]; then
+  echo "ERROR: no account provider with account.region found for ${ACCOUNT_NRN}" >&2
+  exit 1
+fi
+
+ACCOUNT_PROVIDER_DATA=$(np provider read --id "$ACCOUNT_PROVIDER_ID" --format json)
+REGION=$(echo "$ACCOUNT_PROVIDER_DATA" | jq -r '.attributes.account.region // ""')
+
+if [ -z "$REGION" ]; then
+  echo "ERROR: account.region not found in provider ${ACCOUNT_PROVIDER_ID}" >&2
+  exit 1
+fi
+
+echo "Using region: ${REGION}"
+export REGION
+
+# --- Ensure per-instance tfstate bucket exists ------------------------------
+# Each service instance gets its own S3 bucket so state is isolated and the
+# bucket name is deterministic (reconstructable from SERVICE_ID alone).
+
+TFSTATE_BUCKET="np-service-${SERVICE_ID}"
+
+if ! aws s3api head-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION" 2>/dev/null; then
+  echo "Creating tfstate bucket: ${TFSTATE_BUCKET}"
+  if [ "$REGION" = "us-east-1" ]; then
+    aws s3api create-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION"
+  else
+    aws s3api create-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION" \
+      --create-bucket-configuration LocationConstraint="$REGION"
+  fi
+  aws s3api put-bucket-versioning --bucket "$TFSTATE_BUCKET" \
+    --versioning-configuration Status=Enabled
+  echo "Bucket ${TFSTATE_BUCKET} created with versioning enabled."
+else
+  echo "Using existing tfstate bucket: ${TFSTATE_BUCKET}"
+fi
+
+export TFSTATE_BUCKET
+
+# --- Set Terraform execution variables --------------------------------------
+
+export OUTPUT_DIR="/tmp/np-service-${SERVICE_ID}"
+mkdir -p "$OUTPUT_DIR"
+
+export TOFU_MODULE_DIR="$SERVICE_PATH/deployment"
+
+export TOFU_INIT_VARIABLES="-backend-config=bucket=${TFSTATE_BUCKET} -backend-config=key=terraform.tfstate -backend-config=region=${REGION} -backend-config=use_lockfile=true"
+
+# --- Complex variables go through a file, not the command line --------------
+# do_tofu runs "tofu apply $TOFU_VARIABLES" unquoted, so the shell word-splits
+# it. A JSON list inline would break at the first space and mangle the value.
+# A -var-file flag survives word-splitting as a single token.
+
+TFVARS_FILE="$OUTPUT_DIR/terraform.tfvars.json"
+jq -n --argjson gsi "$GLOBAL_SECONDARY_INDEXES" '{global_secondary_indexes: $gsi}' > "$TFVARS_FILE"
+echo "Wrote $(echo "$GLOBAL_SECONDARY_INDEXES" | jq 'length') global secondary index(es) to ${TFVARS_FILE}"
+
+export TOFU_VARIABLES="-var=service_id=${SERVICE_ID} -var=region=${REGION} -var=table_name=${TABLE_NAME} -var=billing_mode=${BILLING_MODE} -var=hash_key=${HASH_KEY} -var=hash_key_type=${HASH_KEY_TYPE} -var=range_key=${RANGE_KEY} -var=range_key_type=${RANGE_KEY_TYPE} -var=read_capacity=${READ_CAPACITY} -var=write_capacity=${WRITE_CAPACITY} -var=deletion_protection=${DELETION_PROTECTION} -var=ttl_enabled=${TTL_ENABLED} -var=ttl_attribute_name=${TTL_ATTRIBUTE_NAME} -var-file=${TFVARS_FILE}"
+
+# --- Extract link context (link workflows only) -----------------------------
+# These are consumed by build_permissions_context in the next workflow step.
+
+if [ "${ACTION_SOURCE:-}" = "link" ]; then
+  LINK_ID=$(echo "$CONTEXT"   | jq -r '.link.id       // ""')
+  LINK_NAME=$(echo "$CONTEXT" | jq -r '.link.name     // ""')
+  SCOPE_ID=$(echo "$CONTEXT"  | jq -r '.link.scope.id // ""')
+  SCOPE_NRN=$(echo "$CONTEXT" | jq -r '.link.scope.nrn // ""')
+  export LINK_ID LINK_NAME SCOPE_ID SCOPE_NRN
+
+  LINK_ATTRS=$(echo "$CONTEXT" | jq -r '(.link.attributes // {}) * (.parameters // {})')
+  LINK_ACCESS_LEVEL=$(echo "$LINK_ATTRS" | jq -r '.access_level // "read-write"')
+  export LINK_ACCESS_LEVEL
+fi
