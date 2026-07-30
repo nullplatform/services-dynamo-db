@@ -19,6 +19,42 @@ case "$SERVICE_ACTION_TYPE" in
     ;;
 esac
 
+# ---------------------------------------------------------------------------
+# Per-link-type routing.
+#
+# The service exposes two link types — connect (credentials for the table) and
+# trigger (wires the stream to a Lambda) — which need different Terraform
+# modules and different permissions. The action type alone cannot tell them
+# apart: creating either one arrives here as "create".
+#
+# So we look for a workflow named <action>-<link slug>.yaml and fall back to
+# <action>.yaml when there is none. connect keeps using link.yaml unchanged;
+# trigger gets link-trigger.yaml and friends.
+#
+# The context field carrying the link's specification slug is not documented,
+# so we try the known candidates in order. The full link object is logged at
+# the end to make the actual shape visible on the first real run.
+# ---------------------------------------------------------------------------
+LINK_SLUG=$(echo "${LINK:-}" | jq -r '
+  .specification.slug
+  // .link_specification.slug
+  // .specification_slug
+  // .slug
+  // empty' 2>/dev/null)
+
+if [ -n "$LINK_SLUG" ]; then
+  CANDIDATE="$SERVICE_PATH/workflows/aws/${ACTION_TO_EXECUTE}-${LINK_SLUG}.yaml"
+  if [ -f "$CANDIDATE" ]; then
+    echo "Routing to link-type workflow: ${ACTION_TO_EXECUTE}-${LINK_SLUG}.yaml"
+    ACTION_TO_EXECUTE="${ACTION_TO_EXECUTE}-${LINK_SLUG}"
+  else
+    echo "No workflow for link type '${LINK_SLUG}', using ${ACTION_TO_EXECUTE}.yaml"
+  fi
+else
+  echo "Could not resolve the link specification slug; using ${ACTION_TO_EXECUTE}.yaml"
+  echo "Link object was: $(echo "${LINK:-null}" | jq -c 'if type == "object" then with_entries(.value = (.value | type)) else . end' 2>/dev/null)"
+fi
+
 WORKFLOW_PATH="$SERVICE_PATH/workflows/aws/$ACTION_TO_EXECUTE.yaml"
 OVERRIDES_WORKFLOW_PATH="$OVERRIDES_PATH/workflows/aws/$ACTION_TO_EXECUTE.yaml"
 VALUES_PATH="$SERVICE_PATH/values.yaml"

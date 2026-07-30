@@ -5,7 +5,7 @@
   "unique": false,
   "assignable_to": "any",
   "use_default_actions": true,
-  "available_links": ["connect"],
+  "available_links": ["connect", "trigger"],
   "selectors": {
     "category": "Database",
     "imported": false,

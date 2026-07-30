@@ -1,0 +1,84 @@
+#!/bin/bash
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# build_trigger_context — Prepares the Terraform execution environment for
+# trigger link actions. Runs AFTER build_context, which has set: $CONTEXT,
+# $VALUES, $SERVICE_PATH, $LINK_ID, $TFSTATE_BUCKET, $REGION
+#
+# Wires the table's stream to the Lambda function of the linked application.
+# ---------------------------------------------------------------------------
+
+# Each script is isolated: functions do not carry over between steps.
+yaml_value() {
+  local key="$1" default="$2" file="$3"
+  local val
+  val=$(grep "^${key}:" "$file" 2>/dev/null | sed 's/^[^:]*: *//;s/^"//;s/"$//' | head -1)
+  echo "${val:-$default}"
+}
+
+AWS_PROFILE_VAL=$(yaml_value "aws_profile" "" "$VALUES")
+
+if [ -n "${AWS_PROFILE_VAL}" ] && [ -z "${AWS_PROFILE:-}" ]; then
+  export AWS_PROFILE="${AWS_PROFILE_VAL}"
+fi
+
+# --- The stream comes from the service, not from AWS ------------------------
+# write_service_outputs persisted it after the table was created. It is stable
+# because the service never disables the stream nor changes its view type.
+
+SERVICE_ATTRS=$(echo "$CONTEXT" | jq -r '.service.attributes // {}')
+
+TABLE_NAME=$(echo "$SERVICE_ATTRS" | jq -r '.table_name // ""')
+STREAM_ARN=$(echo "$SERVICE_ATTRS" | jq -r '.stream_arn // ""')
+
+if [ -z "$STREAM_ARN" ]; then
+  echo "ERROR: the service has no stream_arn attribute." >&2
+  echo "  The table must be created before a trigger can be established." >&2
+  exit 1
+fi
+
+# --- The function name is derived from the linked scope ---------------------
+# The Lambda scope names its function <scope-id>-<application-slug>-<scope-slug>,
+# truncated to 64 characters. Deriving it from the link context keeps this
+# service from having to query AWS to find the function.
+#
+# NOTE: this couples the trigger to the Lambda scope's naming convention. If
+# that convention changes, this is what breaks — and the terraform data source
+# will fail with "function not found" rather than doing something silently
+# wrong.
+
+SCOPE_ID=$(echo "$CONTEXT"    | jq -r '.link.scope.id // ""')
+SCOPE_SLUG=$(echo "$CONTEXT"  | jq -r '.link.scope.slug // ""')
+APP_SLUG=$(echo "$CONTEXT"    | jq -r '.link.entity.slug // .link.application.slug // ""')
+
+if [ -z "$SCOPE_ID" ] || [ -z "$SCOPE_SLUG" ] || [ -z "$APP_SLUG" ]; then
+  echo "ERROR: could not resolve the target Lambda from the link context." >&2
+  echo "  scope.id='${SCOPE_ID}' scope.slug='${SCOPE_SLUG}' application.slug='${APP_SLUG}'" >&2
+  echo "  A trigger link must target an application deployed with the Lambda scope." >&2
+  exit 1
+fi
+
+FUNCTION_NAME=$(echo "${SCOPE_ID}-${APP_SLUG}-${SCOPE_SLUG}" | cut -c1-64)
+
+ALIAS_NAME=$(yaml_value "lambda_alias_name" "main" "$VALUES")
+
+# --- Trigger settings from the link -----------------------------------------
+
+LINK_ATTRS=$(echo "$CONTEXT" | jq -r '(.link.attributes // {}) * (.parameters // {})')
+
+STARTING_POSITION=$(echo "$LINK_ATTRS"       | jq -r '.starting_position       // "TRIM_HORIZON"')
+BATCH_SIZE=$(echo "$LINK_ATTRS"              | jq -r '.batch_size              // 100')
+BATCHING_WINDOW_SECONDS=$(echo "$LINK_ATTRS" | jq -r '.batching_window_seconds // 0')
+TRIGGER_ENABLED=$(echo "$LINK_ATTRS"         | jq -r '.enabled                 // true')
+
+echo "Trigger ${LINK_ID}: ${TABLE_NAME} stream -> ${FUNCTION_NAME}:${ALIAS_NAME}"
+echo "  starting_position=${STARTING_POSITION} batch_size=${BATCH_SIZE} window=${BATCHING_WINDOW_SECONDS}s enabled=${TRIGGER_ENABLED}"
+
+# --- Set Terraform execution variables --------------------------------------
+
+export TOFU_MODULE_DIR="$SERVICE_PATH/trigger"
+
+export TOFU_INIT_VARIABLES="-backend-config=bucket=${TFSTATE_BUCKET} -backend-config=key=links/${LINK_ID}.tfstate -backend-config=region=${REGION} -backend-config=use_lockfile=true"
+
+export TOFU_VARIABLES="-var=link_id=${LINK_ID} -var=region=${REGION} -var=stream_arn=${STREAM_ARN} -var=table_name=${TABLE_NAME} -var=function_name=${FUNCTION_NAME} -var=alias_name=${ALIAS_NAME} -var=starting_position=${STARTING_POSITION} -var=batch_size=${BATCH_SIZE} -var=batching_window_seconds=${BATCHING_WINDOW_SECONDS} -var=enabled=${TRIGGER_ENABLED}"

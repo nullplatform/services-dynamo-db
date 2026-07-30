@@ -16,3 +16,8 @@ aws_profile: ""
 # the role this service assumes (selector "dynamodb").
 provider_categories:
   - identity-access-control
+
+# Alias of the Lambda function a trigger link points at. The Lambda scope
+# routes traffic through this alias, so pointing the trigger at it keeps the
+# trigger on whichever version is live after a blue/green deployment.
+lambda_alias_name: "main"
