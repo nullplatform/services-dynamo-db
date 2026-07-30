@@ -1,0 +1,63 @@
+#!/bin/bash
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# build_permissions_context — Prepares the Terraform execution environment
+# for link actions (link / link-update / unlink). Runs AFTER build_context,
+# which has set: $CONTEXT, $VALUES, $SERVICE_PATH, $LINK_ID,
+# $LINK_ACCESS_LEVEL, $TFSTATE_BUCKET, $REGION
+#
+# This script creates a dedicated IAM user (+ access key) per link, with an
+# inline policy scoped to the target table and its indexes.
+# ---------------------------------------------------------------------------
+
+# IMPORTANT: This script has its own yaml_value() function.
+# Shell functions do NOT carry over between scripts; each script is isolated.
+yaml_value() {
+  local key="$1" default="$2" file="$3"
+  local val
+  val=$(grep "^${key}:" "$file" 2>/dev/null | sed 's/^[^:]*: *//;s/^"//;s/"$//' | head -1)
+  echo "${val:-$default}"
+}
+
+AWS_PROFILE_VAL=$(yaml_value "aws_profile" "" "$VALUES")
+
+if [ -n "${AWS_PROFILE_VAL}" ] && [ -z "${AWS_PROFILE:-}" ]; then
+  export AWS_PROFILE="${AWS_PROFILE_VAL}"
+fi
+
+# --- Read service outputs (set by write_service_outputs after table creation) -
+
+SERVICE_ATTRS=$(echo "$CONTEXT" | jq -r '.service.attributes // {}')
+
+TABLE_NAME=$(echo "$SERVICE_ATTRS" | jq -r '.table_name // ""')
+TABLE_ARN=$(echo "$SERVICE_ATTRS"  | jq -r '.table_arn  // ""')
+
+if [ -z "$TABLE_ARN" ] || [ -z "$TABLE_NAME" ]; then
+  echo "ERROR: the service has no table_arn/table_name attributes yet." >&2
+  echo "  The table must be created before a link can be established." >&2
+  exit 1
+fi
+
+if [ -z "${LINK_ID:-}" ]; then
+  echo "ERROR: LINK_ID is not set. build_context must run before this script." >&2
+  exit 1
+fi
+
+# --- IAM user name ----------------------------------------------------------
+# IAM user names are limited to 64 chars. The link ID with dashes stripped and
+# truncated keeps it well inside the limit while staying unique per link.
+
+IAM_USER_NAME="np-ddb-$(echo "$LINK_ID" | tr -d '-' | cut -c1-16)"
+
+echo "Link ${LINK_ID} -> table ${TABLE_NAME} (access: ${LINK_ACCESS_LEVEL:-read-write})"
+
+# --- Set Terraform execution variables --------------------------------------
+# The link module keeps its own state key inside the same per-service bucket,
+# so links can be created and destroyed without touching the table state.
+
+export TOFU_MODULE_DIR="$SERVICE_PATH/permissions"
+
+export TOFU_INIT_VARIABLES="-backend-config=bucket=${TFSTATE_BUCKET} -backend-config=key=links/${LINK_ID}.tfstate -backend-config=region=${REGION} -backend-config=use_lockfile=true"
+
+export TOFU_VARIABLES="-var=link_id=${LINK_ID} -var=region=${REGION} -var=table_name=${TABLE_NAME} -var=table_arn=${TABLE_ARN} -var=iam_user_name=${IAM_USER_NAME} -var=access_level=${LINK_ACCESS_LEVEL:-read-write}"
