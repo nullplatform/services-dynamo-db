@@ -162,10 +162,13 @@ export TOFU_VARIABLES="-var=service_id=${SERVICE_ID} -var=region=${REGION} -var=
 # These are consumed by build_permissions_context in the next workflow step.
 
 if [ "${ACTION_SOURCE:-}" = "link" ]; then
-  LINK_ID=$(echo "$CONTEXT"   | jq -r '.link.id       // ""')
-  LINK_NAME=$(echo "$CONTEXT" | jq -r '.link.name     // ""')
-  SCOPE_ID=$(echo "$CONTEXT"  | jq -r '.link.scope.id // ""')
-  SCOPE_NRN=$(echo "$CONTEXT" | jq -r '.link.scope.nrn // ""')
+  # The .link object only carries the link's own identity, attributes and
+  # specification. Where the link lives — application, scope — arrives as tags
+  # and in .entity_nrn.
+  LINK_ID=$(echo "$CONTEXT"   | jq -r '.link.id        // ""')
+  LINK_NAME=$(echo "$CONTEXT" | jq -r '.link.slug      // ""')
+  SCOPE_ID=$(echo "$CONTEXT"  | jq -r '.tags.scope_id  // ""')
+  SCOPE_NRN=$(echo "$CONTEXT" | jq -r '.entity_nrn     // ""')
   export LINK_ID LINK_NAME SCOPE_ID SCOPE_NRN
 
   LINK_ATTRS=$(echo "$CONTEXT" | jq -r '(.link.attributes // {}) * (.parameters // {})')

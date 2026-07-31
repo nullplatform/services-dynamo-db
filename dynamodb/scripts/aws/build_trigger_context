@@ -48,14 +48,20 @@ fi
 # will fail with "function not found" rather than doing something silently
 # wrong.
 
-SCOPE_ID=$(echo "$CONTEXT"    | jq -r '.link.scope.id // ""')
-SCOPE_SLUG=$(echo "$CONTEXT"  | jq -r '.link.scope.slug // ""')
-APP_SLUG=$(echo "$CONTEXT"    | jq -r '.link.entity.slug // .link.application.slug // ""')
+# The scope and the application arrive as tags, not nested under .link — that
+# object only carries the link's own identity, attributes and specification.
+SCOPE_ID=$(echo "$CONTEXT"   | jq -r '.tags.scope_id // ""')
+SCOPE_SLUG=$(echo "$CONTEXT" | jq -r '.tags.scope // ""')
+APP_SLUG=$(echo "$CONTEXT"   | jq -r '.tags.application // ""')
 
 if [ -z "$SCOPE_ID" ] || [ -z "$SCOPE_SLUG" ] || [ -z "$APP_SLUG" ]; then
   echo "ERROR: could not resolve the target Lambda from the link context." >&2
-  echo "  scope.id='${SCOPE_ID}' scope.slug='${SCOPE_SLUG}' application.slug='${APP_SLUG}'" >&2
-  echo "  A trigger link must target an application deployed with the Lambda scope." >&2
+  echo "  tags.scope_id='${SCOPE_ID}' tags.scope='${SCOPE_SLUG}' tags.application='${APP_SLUG}'" >&2
+  echo "" >&2
+  echo "  A trigger link must target a scope, not an application: the function" >&2
+  echo "  name is built from the scope it is linked to." >&2
+  echo "" >&2
+  echo "  Tags present in the context: $(echo "$CONTEXT" | jq -c '.tags // {} | keys' 2>/dev/null)" >&2
   exit 1
 fi
 
