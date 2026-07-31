@@ -59,7 +59,9 @@ if [ -z "$SCOPE_ID" ] || [ -z "$SCOPE_SLUG" ] || [ -z "$APP_SLUG" ]; then
   exit 1
 fi
 
-FUNCTION_NAME=$(echo "${SCOPE_ID}-${APP_SLUG}-${SCOPE_SLUG}" | cut -c1-64)
+# Same expression the Lambda scope uses to truncate, so the two cannot drift.
+FUNCTION_NAME="${SCOPE_ID}-${APP_SLUG}-${SCOPE_SLUG}"
+FUNCTION_NAME="${FUNCTION_NAME:0:64}"
 
 ALIAS_NAME=$(yaml_value "lambda_alias_name" "main" "$VALUES")
 
@@ -71,6 +73,19 @@ STARTING_POSITION=$(echo "$LINK_ATTRS"       | jq -r '.starting_position       /
 BATCH_SIZE=$(echo "$LINK_ATTRS"              | jq -r '.batch_size              // 100')
 BATCHING_WINDOW_SECONDS=$(echo "$LINK_ATTRS" | jq -r '.batching_window_seconds // 0')
 TRIGGER_ENABLED=$(echo "$LINK_ATTRS"         | jq -r '.enabled                 // true')
+
+# The alias only exists once the scope has deployed at least once. Checking it
+# here turns a terraform data source failure into something actionable.
+if ! aws lambda get-alias --function-name "$FUNCTION_NAME" --name "$ALIAS_NAME" --region "$REGION" >/dev/null 2>&1; then
+  echo "ERROR: no alias '${ALIAS_NAME}' on function '${FUNCTION_NAME}'." >&2
+  if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" >/dev/null 2>&1; then
+    echo "  The function exists but has no '${ALIAS_NAME}' alias: deploy the scope once before creating the trigger." >&2
+  else
+    echo "  The function does not exist in ${REGION}." >&2
+    echo "  A trigger link must target an application deployed with the Lambda scope." >&2
+  fi
+  exit 1
+fi
 
 echo "Trigger ${LINK_ID}: ${TABLE_NAME} stream -> ${FUNCTION_NAME}:${ALIAS_NAME}"
 echo "  starting_position=${STARTING_POSITION} batch_size=${BATCH_SIZE} window=${BATCHING_WINDOW_SECONDS}s enabled=${TRIGGER_ENABLED}"
