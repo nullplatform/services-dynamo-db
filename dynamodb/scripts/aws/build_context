@@ -13,13 +13,6 @@ set -euo pipefail
 
 SERVICE_ID=$(echo "$CONTEXT" | jq -r '.service.id')
 
-# The create notification does not carry .service.name, so the name has to be
-# read back from the API. Without this the table ends up called
-# np-svc-<uuid> — which is what happens to every bucket the aws-s3-bucket
-# service creates, where a user-provided suffix hides it.
-#
-# The name only matters on create: from then on the table name is frozen in the
-# service attributes (see below), so a rename never reaches AWS.
 SERVICE_NAME=$(echo "$CONTEXT" | jq -r '.service.name // ""')
 
 if [ -z "$SERVICE_NAME" ]; then

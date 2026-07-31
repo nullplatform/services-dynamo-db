@@ -49,12 +49,6 @@ cd "$OUTPUT_DIR"
 cp -r "$TOFU_MODULE_DIR"/* .
 
 echo "Running: tofu init"
-# Abort on a failed init instead of falling through to apply. A stale
-# .terraform in the working directory — one initialised against a different
-# backend key — makes init fail with "Backend configuration changed"; carrying
-# on would run the apply against whatever state that .terraform points at, with
-# this module's configuration on top. Terraform would then read every resource
-# it does not declare as removed and destroy it.
 # shellcheck disable=SC2086
 if ! tofu init $TOFU_INIT_VARIABLES; then
   echo "" >&2

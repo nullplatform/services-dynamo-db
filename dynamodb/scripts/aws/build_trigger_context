@@ -77,10 +77,6 @@ echo "  starting_position=${STARTING_POSITION} batch_size=${BATCH_SIZE} window=$
 
 # --- Set Terraform execution variables --------------------------------------
 
-# CRITICAL: same isolation the connect link needs. Without its own OUTPUT_DIR
-# the action reuses /tmp/np-service-<service-id>, whose .terraform points at the
-# service state, and the apply would destroy the table it finds there but does
-# not declare.
 export OUTPUT_DIR="/tmp/np-link-${LINK_ID}"
 mkdir -p "$OUTPUT_DIR"
 

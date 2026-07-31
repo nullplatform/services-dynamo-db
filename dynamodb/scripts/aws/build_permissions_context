@@ -56,12 +56,6 @@ echo "Link ${LINK_ID} -> table ${TABLE_NAME} (access: ${LINK_ACCESS_LEVEL:-read-
 # The link module keeps its own state key inside the same per-service bucket,
 # so links can be created and destroyed without touching the table state.
 
-# CRITICAL: override OUTPUT_DIR so the link gets an isolated workspace.
-# build_context points it at /tmp/np-service-<service-id>, which already holds a
-# .terraform initialised against the service's own state key. Reusing it makes
-# `tofu init` fail with "Backend configuration changed" and, worse, leaves the
-# apply running against the service state with the permissions module on top —
-# terraform then sees the table as "not in configuration" and destroys it.
 export OUTPUT_DIR="/tmp/np-link-${LINK_ID}"
 mkdir -p "$OUTPUT_DIR"
 

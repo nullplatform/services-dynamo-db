@@ -14,9 +14,6 @@ cd "$OUTPUT_DIR"
 
 LINK_ID=$(echo "$CONTEXT" | jq -r '.link.id')
 
-# Read every output in one shot as JSON. `tofu output -raw` returns nothing for
-# a value marked sensitive, which silently dropped the secret access key and
-# left the application with credentials it could not authenticate with.
 OUTPUTS=$(tofu output -json 2>/dev/null || echo '{}')
 
 ACCESS_KEY_ID=$(echo "$OUTPUTS"     | jq -r '.aws_access_key_id.value     // ""')
