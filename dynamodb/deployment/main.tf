@@ -40,6 +40,8 @@ locals {
   attribute_conflict = length(local.attributes) != length(distinct([
     for a in local.declared_attributes : "${a.name}:${a.type}"
   ]))
+
+  range_key_equals_hash_key = local.has_range_key && trimspace(var.range_key) == trimspace(var.hash_key)
 }
 
 resource "aws_dynamodb_table" "main" {
@@ -106,6 +108,11 @@ resource "aws_dynamodb_table" "main" {
   tags = local.common_tags
 
   lifecycle {
+    precondition {
+      condition     = !local.range_key_equals_hash_key
+      error_message = "The sort key and the partition key are both set to '${var.hash_key}'. A table cannot use the same attribute for both: pick a different attribute for the sort key, or leave it empty for a partition-key-only table."
+    }
+
     precondition {
       condition     = !local.attribute_conflict
       error_message = "The same attribute is declared with two different types across the table keys and the global secondary indexes. Every index that reuses an attribute must declare the same type for it."
