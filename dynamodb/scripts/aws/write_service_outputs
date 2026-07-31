@@ -1,0 +1,52 @@
+#!/bin/bash
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# write_service_outputs — Reads Terraform outputs from the deployment module
+# and writes them to the NP service attributes via the API.
+#
+# Fields with "export: true" in the service spec (table_name, table_arn,
+# stream_arn, table_region) become env vars in apps when a link is activated.
+#
+# stream_arn matters beyond visibility: the trigger link reads it from the
+# notification context to wire the stream to a Lambda function, instead of
+# querying AWS for it.
+# ---------------------------------------------------------------------------
+
+cd "$OUTPUT_DIR"
+
+SERVICE_ID=$(echo "$CONTEXT" | jq -r '.service.id')
+
+OUTPUTS=$(tofu output -json 2>/dev/null || echo '{}')
+
+TABLE_NAME=$(echo "$OUTPUTS"   | jq -r '.table_name.value   // ""')
+TABLE_ARN=$(echo "$OUTPUTS"    | jq -r '.table_arn.value    // ""')
+TABLE_ID=$(echo "$OUTPUTS"     | jq -r '.table_id.value     // ""')
+TABLE_REGION=$(echo "$OUTPUTS" | jq -r '.table_region.value // ""')
+STREAM_ARN=$(echo "$OUTPUTS"   | jq -r '.stream_arn.value   // ""')
+
+if [ -z "$TABLE_NAME" ]; then
+  echo "WARNING: No table_name output found. Skipping attribute update."
+  exit 0
+fi
+
+ATTRIBUTES=$(jq -n \
+  --arg table_name    "$TABLE_NAME" \
+  --arg table_arn     "$TABLE_ARN" \
+  --arg table_id      "$TABLE_ID" \
+  --arg table_region  "$TABLE_REGION" \
+  --arg stream_arn    "$STREAM_ARN" \
+  '{
+    table_name:   $table_name,
+    table_arn:    $table_arn,
+    table_id:     $table_id,
+    table_region: $table_region,
+    stream_arn:   $stream_arn
+  }')
+
+echo "Writing service attributes for service ${SERVICE_ID}:"
+echo "$ATTRIBUTES" | jq .
+
+np service patch --id "$SERVICE_ID" --body "{\"attributes\": $ATTRIBUTES}"
+
+echo "Service attributes updated."

@@ -1,0 +1,38 @@
+#!/bin/bash
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# write_trigger_outputs — Writes the trigger identifiers back to the link.
+#
+# Unlike the connect link, a trigger hands the application nothing: there are
+# no credentials and no environment variables. These attributes exist so the
+# link shows what it wired up.
+# ---------------------------------------------------------------------------
+
+cd "$OUTPUT_DIR"
+
+LINK_ID=$(echo "$CONTEXT" | jq -r '.link.id')
+
+OUTPUTS=$(tofu output -json 2>/dev/null || echo '{}')
+
+TRIGGER_ID=$(echo "$OUTPUTS"    | jq -r '.trigger_id.value    // ""')
+FUNCTION_NAME=$(echo "$OUTPUTS" | jq -r '.function_name.value // ""')
+
+if [ -z "$TRIGGER_ID" ]; then
+  echo "WARNING: No trigger_id output found. Skipping attribute update."
+  exit 0
+fi
+
+ATTRIBUTES=$(jq -n \
+  --arg trigger_id    "$TRIGGER_ID" \
+  --arg function_name "$FUNCTION_NAME" \
+  '{
+    trigger_id:    $trigger_id,
+    function_name: $function_name
+  }')
+
+echo "Writing trigger attributes for link ${LINK_ID}: ${FUNCTION_NAME} (${TRIGGER_ID})"
+
+np link patch --id "$LINK_ID" --body "{\"attributes\": $ATTRIBUTES}"
+
+echo "Link attributes updated."

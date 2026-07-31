@@ -132,3 +132,14 @@ dist
 # Intellij
 
 .idea
+
+.DS_Store
+
+# OpenTofu / Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log

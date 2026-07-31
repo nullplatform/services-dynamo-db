@@ -1,0 +1,24 @@
+# Trivy misconfiguration suppressions for this repo.
+# Each entry is intentional and documented; revisit if the module changes.
+
+# AVD-AWS-0132 — S3 bucket not encrypted with a customer-managed KMS key.
+# The service provisions buckets with default SSE; customer-managed KMS keys are
+# left to the consumer to layer on when required (flexible by design).
+AVD-AWS-0132
+
+# AVD-AWS-0345 — IAM policy allows 's3:*' action.
+#   dynamodb/specs/requirements/aws/main.tf, statement "ManageStateBuckets"
+#
+# The role manages one state bucket per service instance, and the scripts use six
+# operations on them — head-bucket, create-bucket, put-bucket-versioning,
+# delete-bucket, delete-objects and list-object-versions — plus the reads and
+# writes the tofu backend performs on the state object. s3:* is wider than that.
+#
+# The resource is already scoped to arn:aws:s3:::np-service-*, so the finding is
+# about the action rather than the target. It is still worth fixing: s3:* covers
+# PutBucketPolicy and PutBucketPublicAccessBlock, and each link's access key sits
+# in that state in clear text, so a compromised role could publish the bucket.
+#
+# Accepted until the actions are enumerated in two statements, one for the bucket
+# and one for its objects. The expiry makes this check fail again if nobody did.
+AVD-AWS-0345 exp:2026-10-31

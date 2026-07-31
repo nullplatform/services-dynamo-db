@@ -1,0 +1,21 @@
+steps:
+  - name: read current state
+    type: script
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+
+      # Reports back what the platform already knows about the table. The
+      # attributes were written by write_service_outputs after the last apply.
+      SERVICE_ATTRS=$(echo "$CONTEXT" | jq -r '.service.attributes // {}')
+
+      RESULTS=$(echo "$SERVICE_ATTRS" | jq '{
+        table_name:   (.table_name   // ""),
+        table_arn:    (.table_arn    // ""),
+        table_region: (.table_region // ""),
+        stream_arn:   (.stream_arn   // "")
+      }')
+
+      echo "$RESULTS" | jq .
+
+      np service action update --results "$RESULTS"
