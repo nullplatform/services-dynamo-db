@@ -55,8 +55,9 @@ resource "aws_lambda_event_source_mapping" "trigger" {
 
   # The alias ARN, not the function ARN. With the bare function the mapping
   # consumes $LATEST, which after a blue/green deployment is not necessarily
-  # the version serving traffic.
-  function_name = data.aws_lambda_function.target.arn
+  # the version serving traffic. The data source exposes both: .arn drops the
+  # qualifier, .qualified_arn keeps it.
+  function_name = data.aws_lambda_function.target.qualified_arn
 
   starting_position = var.starting_position
   enabled           = var.enabled

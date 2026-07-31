@@ -49,6 +49,9 @@ resource "aws_iam_policy" "nullplatform_dynamodb_trigger" {
           "lambda:DeleteEventSourceMapping",
           "lambda:GetEventSourceMapping",
           "lambda:ListEventSourceMappings",
+          "lambda:ListTags",
+          "lambda:TagResource",
+          "lambda:UntagResource",
         ]
         Resource = "*"
       },
