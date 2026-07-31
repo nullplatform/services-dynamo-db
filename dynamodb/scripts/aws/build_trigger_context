@@ -77,6 +77,13 @@ echo "  starting_position=${STARTING_POSITION} batch_size=${BATCH_SIZE} window=$
 
 # --- Set Terraform execution variables --------------------------------------
 
+# CRITICAL: same isolation the connect link needs. Without its own OUTPUT_DIR
+# the action reuses /tmp/np-service-<service-id>, whose .terraform points at the
+# service state, and the apply would destroy the table it finds there but does
+# not declare.
+export OUTPUT_DIR="/tmp/np-link-${LINK_ID}"
+mkdir -p "$OUTPUT_DIR"
+
 export TOFU_MODULE_DIR="$SERVICE_PATH/trigger"
 
 export TOFU_INIT_VARIABLES="-backend-config=bucket=${TFSTATE_BUCKET} -backend-config=key=links/${LINK_ID}.tfstate -backend-config=region=${REGION} -backend-config=use_lockfile=true"

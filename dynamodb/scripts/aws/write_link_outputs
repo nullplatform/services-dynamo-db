@@ -14,11 +14,23 @@ cd "$OUTPUT_DIR"
 
 LINK_ID=$(echo "$CONTEXT" | jq -r '.link.id')
 
-ACCESS_KEY_ID=$(tofu output -raw aws_access_key_id 2>/dev/null || echo "")
-SECRET_ACCESS_KEY=$(tofu output -raw aws_secret_access_key 2>/dev/null || echo "")
-IAM_USER_NAME=$(tofu output -raw iam_user_name 2>/dev/null || echo "")
-TABLE_NAME=$(tofu output -raw table_name 2>/dev/null || echo "")
-TABLE_REGION=$(tofu output -raw region 2>/dev/null || echo "")
+# Read every output in one shot as JSON. `tofu output -raw` returns nothing for
+# a value marked sensitive, which silently dropped the secret access key and
+# left the application with credentials it could not authenticate with.
+OUTPUTS=$(tofu output -json 2>/dev/null || echo '{}')
+
+ACCESS_KEY_ID=$(echo "$OUTPUTS"     | jq -r '.aws_access_key_id.value     // ""')
+SECRET_ACCESS_KEY=$(echo "$OUTPUTS" | jq -r '.aws_secret_access_key.value // ""')
+IAM_USER_NAME=$(echo "$OUTPUTS"     | jq -r '.iam_user_name.value         // ""')
+TABLE_NAME=$(echo "$OUTPUTS"        | jq -r '.table_name.value            // ""')
+TABLE_REGION=$(echo "$OUTPUTS"      | jq -r '.region.value                // ""')
+
+if [ -z "$SECRET_ACCESS_KEY" ]; then
+  echo "ERROR: the access key was created but its secret could not be read." >&2
+  echo "  Writing the link without it would hand the application credentials" >&2
+  echo "  it cannot authenticate with." >&2
+  exit 1
+fi
 
 if [ -z "$ACCESS_KEY_ID" ]; then
   echo "WARNING: No aws_access_key_id output found. Skipping attribute update."

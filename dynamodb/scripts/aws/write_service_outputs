@@ -17,11 +17,13 @@ cd "$OUTPUT_DIR"
 
 SERVICE_ID=$(echo "$CONTEXT" | jq -r '.service.id')
 
-TABLE_NAME=$(tofu output -raw table_name 2>/dev/null || echo "")
-TABLE_ARN=$(tofu output -raw table_arn 2>/dev/null || echo "")
-TABLE_ID=$(tofu output -raw table_id 2>/dev/null || echo "")
-TABLE_REGION=$(tofu output -raw table_region 2>/dev/null || echo "")
-STREAM_ARN=$(tofu output -raw stream_arn 2>/dev/null || echo "")
+OUTPUTS=$(tofu output -json 2>/dev/null || echo '{}')
+
+TABLE_NAME=$(echo "$OUTPUTS"   | jq -r '.table_name.value   // ""')
+TABLE_ARN=$(echo "$OUTPUTS"    | jq -r '.table_arn.value    // ""')
+TABLE_ID=$(echo "$OUTPUTS"     | jq -r '.table_id.value     // ""')
+TABLE_REGION=$(echo "$OUTPUTS" | jq -r '.table_region.value // ""')
+STREAM_ARN=$(echo "$OUTPUTS"   | jq -r '.stream_arn.value   // ""')
 
 if [ -z "$TABLE_NAME" ]; then
   echo "WARNING: No table_name output found. Skipping attribute update."

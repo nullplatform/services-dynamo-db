@@ -13,8 +13,10 @@ cd "$OUTPUT_DIR"
 
 LINK_ID=$(echo "$CONTEXT" | jq -r '.link.id')
 
-TRIGGER_ID=$(tofu output -raw trigger_id 2>/dev/null || echo "")
-FUNCTION_NAME=$(tofu output -raw function_name 2>/dev/null || echo "")
+OUTPUTS=$(tofu output -json 2>/dev/null || echo '{}')
+
+TRIGGER_ID=$(echo "$OUTPUTS"    | jq -r '.trigger_id.value    // ""')
+FUNCTION_NAME=$(echo "$OUTPUTS" | jq -r '.function_name.value // ""')
 
 if [ -z "$TRIGGER_ID" ]; then
   echo "WARNING: No trigger_id output found. Skipping attribute update."

@@ -35,6 +35,8 @@ steps:
     type: script
     file: $SERVICE_PATH/scripts/aws/build_permissions_context
     output:
+      - name: OUTPUT_DIR
+        type: environment
       - name: TOFU_MODULE_DIR
         type: environment
       - name: TOFU_INIT_VARIABLES
