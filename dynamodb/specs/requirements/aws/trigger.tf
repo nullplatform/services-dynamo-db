@@ -60,8 +60,12 @@ resource "aws_iam_policy" "nullplatform_dynamodb_trigger" {
         Action = [
           "lambda:GetFunction",
           "lambda:GetFunctionConfiguration",
+          "lambda:GetFunctionConcurrency",
+          "lambda:GetFunctionCodeSigningConfig",
+          "lambda:GetPolicy",
           "lambda:GetAlias",
           "lambda:ListAliases",
+          "lambda:ListVersionsByFunction",
         ]
         Resource = "*"
       },
