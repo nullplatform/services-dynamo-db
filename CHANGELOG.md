@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/nullplatform/services-dynamo-db/compare/v0.1.0...v0.2.0) (2026-08-07)
+
+
+### Features
+
+* **trigger:** restrict the link to scopes ([#3](https://github.com/nullplatform/services-dynamo-db/issues/3)) ([91beb15](https://github.com/nullplatform/services-dynamo-db/commit/91beb15bccabf4f322fc496210026087bbad71f2))
+
 ## [0.1.0](https://github.com/nullplatform/services-dynamo-db/compare/0.0.1...v0.1.0) (2026-07-31)
 
 
