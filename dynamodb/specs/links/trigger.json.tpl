@@ -2,7 +2,7 @@
   "name": "Trigger",
   "slug": "trigger",
   "unique": false,
-  "assignable_to": "any",
+  "assignable_to": "scope",
   "use_default_actions": true,
   "selectors": {
     "category": "Database",

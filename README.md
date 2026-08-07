@@ -73,6 +73,8 @@ Delivery is at-least-once, so handlers must be idempotent. Functions that report
 
 The target function is resolved from the linked scope using the Lambda scope's naming convention. If that convention ever changes, the trigger fails with "function not found" rather than wiring something wrong.
 
+Because the function name is derived from the scope, the link is only meaningful when bound to one: attached to the application, the context arrives without `tags.scope_id` and there is nothing to wire. The spec declares `assignable_to: scope` so the platform does not offer it at application level. Note that this only takes effect once the registering module forwards the field — `service_definition` currently does not.
+
 ## Local testing
 
 Set `aws_profile` in `values.yaml`, run `aws sso login --profile <name>`, and start the agent locally. The service falls back to those credentials when no IAM provider is configured.
