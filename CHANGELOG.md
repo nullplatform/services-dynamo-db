@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/nullplatform/services-dynamo-db/compare/v0.2.0...v0.3.0) (2026-09-09)
+
+
+### Features
+
+* **ci:** build+push the worker image and register its artifact on release ([#5](https://github.com/nullplatform/services-dynamo-db/issues/5)) ([add027e](https://github.com/nullplatform/services-dynamo-db/commit/add027e81f87f57f8352cf457bdeb60589173e6b))
+
 ## [0.2.0](https://github.com/nullplatform/services-dynamo-db/compare/v0.1.0...v0.2.0) (2026-08-07)
 
 
