@@ -22,3 +22,10 @@ AVD-AWS-0132
 # Accepted until the actions are enumerated in two statements, one for the bucket
 # and one for its objects. The expiry makes this check fail again if nobody did.
 AVD-AWS-0345 exp:2026-10-31
+
+# AVD-DS-0002 — the worker image builds on the shared worker-bridge base,
+# which runs as root by design today (same as services-s-3 and scopes-lambda):
+# the runtime user is governed by the agent's worker pod securityContext and
+# patches, not by a USER directive here. Revisit when the bridge ships a
+# non-root variant.
+AVD-DS-0002
