@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/nullplatform/services-dynamo-db/compare/v0.3.0...v0.3.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **deps:** bump OpenTofu to 1.12.6 ([#7](https://github.com/nullplatform/services-dynamo-db/issues/7)) ([7f3461c](https://github.com/nullplatform/services-dynamo-db/commit/7f3461c2b36515cb434e51547252be10fa95ab6a))
+
 ## [0.3.0](https://github.com/nullplatform/services-dynamo-db/compare/v0.2.0...v0.3.0) (2026-09-09)
 
 
