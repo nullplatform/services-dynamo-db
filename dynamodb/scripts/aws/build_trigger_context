@@ -103,6 +103,6 @@ mkdir -p "$OUTPUT_DIR"
 
 export TOFU_MODULE_DIR="$SERVICE_PATH/trigger"
 
-export TOFU_INIT_VARIABLES="-backend-config=bucket=${TFSTATE_BUCKET} -backend-config=key=links/${LINK_ID}.tfstate -backend-config=region=${REGION} -backend-config=use_lockfile=true"
+export TOFU_INIT_VARIABLES="-backend-config=bucket=${TFSTATE_BUCKET} -backend-config=key=${TFSTATE_KEY_PREFIX:-}links/${LINK_ID}.tfstate -backend-config=region=${REGION} -backend-config=use_lockfile=true"
 
 export TOFU_VARIABLES="-var=link_id=${LINK_ID} -var=region=${REGION} -var=stream_arn=${STREAM_ARN} -var=table_name=${TABLE_NAME} -var=function_name=${FUNCTION_NAME} -var=alias_name=${ALIAS_NAME} -var=starting_position=${STARTING_POSITION} -var=batch_size=${BATCH_SIZE} -var=batching_window_seconds=${BATCHING_WINDOW_SECONDS} -var=enabled=${TRIGGER_ENABLED}"

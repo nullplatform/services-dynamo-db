@@ -61,6 +61,6 @@ mkdir -p "$OUTPUT_DIR"
 
 export TOFU_MODULE_DIR="$SERVICE_PATH/permissions"
 
-export TOFU_INIT_VARIABLES="-backend-config=bucket=${TFSTATE_BUCKET} -backend-config=key=links/${LINK_ID}.tfstate -backend-config=region=${REGION} -backend-config=use_lockfile=true"
+export TOFU_INIT_VARIABLES="-backend-config=bucket=${TFSTATE_BUCKET} -backend-config=key=${TFSTATE_KEY_PREFIX:-}links/${LINK_ID}.tfstate -backend-config=region=${REGION} -backend-config=use_lockfile=true"
 
 export TOFU_VARIABLES="-var=link_id=${LINK_ID} -var=region=${REGION} -var=table_name=${TABLE_NAME} -var=table_arn=${TABLE_ARN} -var=iam_user_name=${IAM_USER_NAME} -var=access_level=${LINK_ACCESS_LEVEL:-read-write}"

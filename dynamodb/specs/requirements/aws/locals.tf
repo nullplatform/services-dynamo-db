@@ -27,6 +27,30 @@ locals {
   # keeps the role from being able to touch any other user in the account.
   link_user_path_arn = "arn:aws:iam::${local.account_id}:user/nullplatform/dynamodb/*"
 
+  # Access to the shared state bucket, granted only when one is configured. The
+  # per-instance np-service-* grant stays regardless, since the service still
+  # falls back to it when DYNAMO_S3_STATE_BUCKET is unset.
+  shared_state_statements = var.state_bucket_name == "" ? [] : [
+    {
+      Sid      = "ListSharedStateBucket"
+      Effect   = "Allow"
+      Action   = ["s3:ListBucket", "s3:ListBucketVersions", "s3:GetBucketLocation"]
+      Resource = "arn:aws:s3:::${var.state_bucket_name}"
+    },
+    {
+      Sid    = "ManageSharedStateObjects"
+      Effect = "Allow"
+      Action = [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion",
+      ]
+      Resource = "arn:aws:s3:::${var.state_bucket_name}/*"
+    },
+  ]
+
   # Default tags applied to every IAM resource
   iam_default_tags = merge(var.iam_resource_tags_json, {
     ManagedBy = "nullplatform-custom-scope-role"

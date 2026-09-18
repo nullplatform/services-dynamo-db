@@ -2,15 +2,20 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# delete_tfstate_bucket — Removes the per-instance S3 tfstate bucket after
-# tofu destroy has run and the state file is no longer needed.
+# delete_tfstate_bucket — Removes this instance's tofu state after destroy has
+# run and the state file is no longer needed.
+#
+# With a shared state bucket only the instance's key prefix is emptied and the
+# bucket is left in place. Without one the instance owns its bucket, so the
+# bucket itself is removed too.
 #
 # Versioned buckets must be emptied (all versions + delete markers) before
 # deletion. Uses delete-objects (batch) to avoid jq pipeline failures when
 # the bucket is empty (list-object-versions returns null for empty buckets).
 #
 # Expected environment variables (exported by build_context):
-#   TFSTATE_BUCKET — name of the bucket to delete (np-service-<SERVICE_ID>)
+#   TFSTATE_BUCKET     — bucket holding the state
+#   TFSTATE_KEY_PREFIX — this instance's prefix, empty when it owns the bucket
 # ---------------------------------------------------------------------------
 
 if [ -z "${REGION:-}" ]; then
@@ -21,6 +26,14 @@ fi
 if [ -z "${TFSTATE_BUCKET:-}" ]; then
   echo "TFSTATE_BUCKET is not set, skipping bucket cleanup."
   exit 0
+fi
+
+PREFIX="${TFSTATE_KEY_PREFIX:-}"
+
+if [ -n "${DYNAMO_S3_STATE_BUCKET+set}" ] && [ -z "$PREFIX" ]; then
+  echo "ERROR: a shared state bucket is configured but TFSTATE_KEY_PREFIX is empty." >&2
+  echo "       Refusing to continue: this would delete every service's state." >&2
+  exit 1
 fi
 
 if ! aws s3api head-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION" 2>/dev/null; then
@@ -37,6 +50,7 @@ delete_objects() {
   objects=$(aws s3api list-object-versions \
     --bucket "$TFSTATE_BUCKET" \
     --region "$REGION" \
+    --prefix "$PREFIX" \
     --query "${query}" \
     --output json) || rc=$?
 
@@ -63,6 +77,11 @@ delete_objects() {
 
 delete_objects 'Versions[].{Key:Key,VersionId:VersionId}' "object versions"
 delete_objects 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' "delete markers"
+
+if [ -n "$PREFIX" ]; then
+  echo "Removed tofu state under s3://${TFSTATE_BUCKET}/${PREFIX}"
+  exit 0
+fi
 
 echo "Deleting bucket ${TFSTATE_BUCKET}..."
 aws s3api delete-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION"
