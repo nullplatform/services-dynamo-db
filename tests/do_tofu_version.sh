@@ -13,6 +13,14 @@ if [ ! -f "$DO_TOFU" ]; then
 	exit 1
 fi
 
+PINNED="$(sed -n 's/^[[:space:]]*TOFU_VERSION="\([0-9.]*\)".*/\1/p' "$DO_TOFU" | head -1)"
+if [ -z "$PINNED" ]; then
+	echo "no TOFU_VERSION pin found in $DO_TOFU" >&2
+	exit 1
+fi
+echo "pin del script: v${PINNED}"
+echo
+
 if [ -e "$CACHE_ROOT" ]; then
 	CACHE_BACKUP="$(mktemp -d)/np-tofu-bin"
 	mv "$CACHE_ROOT" "$CACHE_BACKUP"
@@ -91,7 +99,7 @@ EOS
 	export TOFU_INIT_VARIABLES="-backend-config=bucket=b -backend-config=use_lockfile=true"
 	export TOFU_VARIABLES="-var=x=1"
 	export TOFU_ACTION="apply"
-	export INSTALLED_VERSION="1.11.6"
+	export INSTALLED_VERSION="$PINNED"
 }
 
 teardown_sandbox() {
@@ -119,7 +127,7 @@ versions_that_ran() {
 	grep -o 'version=[0-9.]*' "$TOFU_CALL_LOG" 2>/dev/null | sed 's/version=//' | sort -u | tr '\n' ' '
 }
 
-echo "=== a stale pre-1.10 binary in the shared cache is not reused ==="
+echo "=== a stale older binary in the shared cache is not reused ==="
 setup_sandbox
 make_fake_tofu "$CACHE_ROOT/tofu" "1.9.0"
 out="$(run_do_tofu)"
@@ -131,7 +139,7 @@ else
 fi
 teardown_sandbox
 
-echo "=== a pre-1.10 tofu on PATH is not used ==="
+echo "=== a tofu older than the pin on PATH is not used ==="
 setup_sandbox
 make_fake_tofu "$SANDBOX/bin/tofu" "1.7.3"
 out="$(run_do_tofu)"
@@ -143,20 +151,20 @@ else
 fi
 teardown_sandbox
 
-echo "=== a supported tofu on PATH is used without downloading ==="
+echo "=== a tofu newer than the pin on PATH is used without downloading ==="
 setup_sandbox
-make_fake_tofu "$SANDBOX/bin/tofu" "1.12.6"
+make_fake_tofu "$SANDBOX/bin/tofu" "9.9.9"
 out="$(run_do_tofu)"
 ran="$(versions_that_ran)"
-if echo "$ran" | grep -q '1\.12\.6'; then
-	check "uses tofu 1.12.6 from PATH" "ok"
+if echo "$ran" | grep -q '9\.9\.9'; then
+	check "uses the newer tofu 9.9.9 from PATH" "ok"
 else
-	check "uses tofu 1.12.6 from PATH" "bad" "ran: [$ran] | out: $(echo "$out" | head -5 | tr '\n' '|')"
+	check "uses the newer tofu 9.9.9 from PATH" "bad" "ran: [$ran] | out: $(echo "$out" | head -5 | tr '\n' '|')"
 fi
 if grep -q CURL_CALLED "$TOFU_CALL_LOG"; then
-	check "does not download when PATH tofu is supported" "bad"
+	check "does not download when PATH tofu is new enough" "bad"
 else
-	check "does not download when PATH tofu is supported" "ok"
+	check "does not download when PATH tofu is new enough" "ok"
 fi
 teardown_sandbox
 
@@ -173,7 +181,7 @@ if [ "$first_curl" -ge 1 ]; then
 else
 	check "cold start downloads tofu" "bad" "out: $(echo "$out" | head -5 | tr '\n' '|')"
 fi
-if [ "$second_curl" -eq 0 ] && echo "$ran" | grep -q '1\.11\.6'; then
+if [ "$second_curl" -eq 0 ] && echo "$ran" | grep -qF "$PINNED"; then
 	check "warm start reuses the cache without downloading" "ok"
 else
 	check "warm start reuses the cache without downloading" "bad" "curl=$second_curl ran=[$ran]"

@@ -17,11 +17,10 @@ set -euo pipefail
 TOFU_ACTION="${TOFU_ACTION:-apply}"
 
 # ---------------------------------------------------------------------------
-# Resolve a tofu that supports S3 native state locking (use_lockfile, 1.10+).
-# Preference: a supported tofu already on PATH, then the download cache, then a
-# fresh download. The cache path is keyed by version and every candidate is
-# version-checked, so a binary left in /tmp by another package or an older
-# revision of this one is never reused.
+# Resolve a tofu of at least the pinned version. Preference: a new enough tofu
+# already on PATH, then the download cache, then a fresh download. The cache
+# path is keyed by version and every candidate is version-checked, so an older
+# binary left in /tmp by another service is never reused.
 # ---------------------------------------------------------------------------
 TOFU_VERSION="1.11.6"
 TOFU_CACHE_DIR="/tmp/np-tofu-bin/${TOFU_VERSION}"
@@ -30,17 +29,11 @@ tofu_version_of() {
   "$1" version 2>/dev/null | head -1 | sed -n 's/^OpenTofu v\([0-9][0-9.]*\).*/\1/p'
 }
 
-tofu_supports_lockfile() {
-  local version major minor
+tofu_is_recent_enough() {
+  local version
   version="$(tofu_version_of "$1")"
   [ -n "$version" ] || return 1
-  major="${version%%.*}"
-  minor="${version#*.}"
-  minor="${minor%%.*}"
-  case "${major}${minor}" in
-    "" | *[!0-9]*) return 1 ;;
-  esac
-  [ "$major" -gt 1 ] || { [ "$major" -eq 1 ] && [ "$minor" -ge 10 ]; }
+  [ "$(printf '%s\n%s\n' "$TOFU_VERSION" "$version" | sort -t. -k1,1n -k2,2n -k3,3n | head -1)" = "$TOFU_VERSION" ]
 }
 
 install_tofu() {
@@ -59,9 +52,9 @@ install_tofu() {
   trap - EXIT
 }
 
-if tofu_supports_lockfile tofu; then
+if tofu_is_recent_enough tofu; then
   TOFU_BIN="$(command -v tofu)"
-elif tofu_supports_lockfile "${TOFU_CACHE_DIR}/tofu"; then
+elif tofu_is_recent_enough "${TOFU_CACHE_DIR}/tofu"; then
   TOFU_BIN="${TOFU_CACHE_DIR}/tofu"
 else
   echo "Installing tofu v${TOFU_VERSION} to ${TOFU_CACHE_DIR}..."
@@ -72,10 +65,10 @@ fi
 TOFU_BIN_DIR="$(dirname "$TOFU_BIN")"
 export PATH="${TOFU_BIN_DIR}:$PATH"
 
-if ! tofu_supports_lockfile "$TOFU_BIN"; then
+if ! tofu_is_recent_enough "$TOFU_BIN"; then
   echo "" >&2
-  echo "ERROR: ${TOFU_BIN} reports version '$(tofu_version_of "$TOFU_BIN")' and cannot" >&2
-  echo "       init the S3 backend with use_lockfile=true. OpenTofu 1.10.0+ is required." >&2
+  echo "ERROR: ${TOFU_BIN} reports version '$(tofu_version_of "$TOFU_BIN")'," >&2
+  echo "       but this service requires OpenTofu ${TOFU_VERSION} or newer." >&2
   echo "" >&2
   exit 1
 fi
