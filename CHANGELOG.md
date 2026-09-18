@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/nullplatform/services-dynamo-db/compare/v0.3.1...v0.4.0) (2026-09-18)
+
+
+### Features
+
+* dependabot for base image bumps ([d22c31e](https://github.com/nullplatform/services-dynamo-db/commit/d22c31edef6b63e028a2fc90c7e8b6b9b81ea6a2))
+* dependabot for base image bumps ([b95fa98](https://github.com/nullplatform/services-dynamo-db/commit/b95fa9811d25d7d092e4652a5e456681e28445e0))
+
+
+### Bug Fixes
+
+* **ci:** auto-merge the release PR from workflow_run; Dependabot commits as fix(deps) ([5f3d40e](https://github.com/nullplatform/services-dynamo-db/commit/5f3d40e64ec05d85455141d4d32963bee2cf0523))
+* **deps:** bump nullplatform/scopes/worker-bridge from 1.0.0 to 1.1.1 ([fb59d46](https://github.com/nullplatform/services-dynamo-db/commit/fb59d46c2075d9bcaaadb57026a115e2f9abbb00))
+
 ## [0.3.1](https://github.com/nullplatform/services-dynamo-db/compare/v0.3.0...v0.3.1) (2026-09-14)
 
 
