@@ -17,32 +17,70 @@ set -euo pipefail
 TOFU_ACTION="${TOFU_ACTION:-apply}"
 
 # ---------------------------------------------------------------------------
-# Ensure tofu is available. On agents where tofu is not pre-installed, download
-# and cache the binary in /tmp/np-tofu-bin so it is only fetched once per pod
-# lifetime (the directory survives across actions but is cleared on pod restart).
+# Resolve a tofu that supports S3 native state locking (use_lockfile, 1.10+).
+# Preference: a supported tofu already on PATH, then the download cache, then a
+# fresh download. The cache path is keyed by version and every candidate is
+# version-checked, so a binary left in /tmp by another package or an older
+# revision of this one is never reused.
 # ---------------------------------------------------------------------------
-if ! command -v tofu &>/dev/null; then
-  # 1.10+ is required for native S3 state locking (use_lockfile=true).
-  TOFU_VERSION="1.11.6"
-  TOFU_BIN_DIR="/tmp/np-tofu-bin"
-  TOFU_BIN="$TOFU_BIN_DIR/tofu"
+TOFU_VERSION="1.11.6"
+TOFU_CACHE_DIR="/tmp/np-tofu-bin/${TOFU_VERSION}"
 
-  if [ ! -f "$TOFU_BIN" ]; then
-    echo "tofu not found in PATH, installing v${TOFU_VERSION} to ${TOFU_BIN_DIR}..."
-    mkdir -p "$TOFU_BIN_DIR"
-    curl -fsSL \
-      "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" \
-      -o /tmp/tofu.zip
-    unzip -qo /tmp/tofu.zip tofu -d "$TOFU_BIN_DIR"
-    chmod +x "$TOFU_BIN"
-    rm -f /tmp/tofu.zip
-    echo "tofu installed: $("$TOFU_BIN" version | head -1)"
-  else
-    echo "Using cached tofu at ${TOFU_BIN}"
-  fi
+tofu_version_of() {
+  "$1" version 2>/dev/null | head -1 | sed -n 's/^OpenTofu v\([0-9][0-9.]*\).*/\1/p'
+}
 
-  export PATH="$TOFU_BIN_DIR:$PATH"
+tofu_supports_lockfile() {
+  local version major minor
+  version="$(tofu_version_of "$1")"
+  [ -n "$version" ] || return 1
+  major="${version%%.*}"
+  minor="${version#*.}"
+  minor="${minor%%.*}"
+  case "${major}${minor}" in
+    "" | *[!0-9]*) return 1 ;;
+  esac
+  [ "$major" -gt 1 ] || { [ "$major" -eq 1 ] && [ "$minor" -ge 10 ]; }
+}
+
+install_tofu() {
+  local staging
+  staging="$(mktemp -d /tmp/np-tofu-install.XXXXXX)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$staging'" EXIT
+  curl -fsSL \
+    "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" \
+    -o "${staging}/tofu.zip"
+  unzip -qo "${staging}/tofu.zip" tofu -d "$staging"
+  chmod +x "${staging}/tofu"
+  mkdir -p "$TOFU_CACHE_DIR"
+  mv -f "${staging}/tofu" "${TOFU_CACHE_DIR}/tofu"
+  rm -rf "$staging"
+  trap - EXIT
+}
+
+if tofu_supports_lockfile tofu; then
+  TOFU_BIN="$(command -v tofu)"
+elif tofu_supports_lockfile "${TOFU_CACHE_DIR}/tofu"; then
+  TOFU_BIN="${TOFU_CACHE_DIR}/tofu"
+else
+  echo "Installing tofu v${TOFU_VERSION} to ${TOFU_CACHE_DIR}..."
+  install_tofu
+  TOFU_BIN="${TOFU_CACHE_DIR}/tofu"
 fi
+
+TOFU_BIN_DIR="$(dirname "$TOFU_BIN")"
+export PATH="${TOFU_BIN_DIR}:$PATH"
+
+if ! tofu_supports_lockfile "$TOFU_BIN"; then
+  echo "" >&2
+  echo "ERROR: ${TOFU_BIN} reports version '$(tofu_version_of "$TOFU_BIN")' and cannot" >&2
+  echo "       init the S3 backend with use_lockfile=true. OpenTofu 1.10.0+ is required." >&2
+  echo "" >&2
+  exit 1
+fi
+
+echo "Using tofu v$(tofu_version_of "$TOFU_BIN") (${TOFU_BIN})"
 
 cd "$OUTPUT_DIR"
 
