@@ -119,15 +119,18 @@ resource "aws_iam_policy" "nullplatform_dynamodb_state" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "ManageStateBuckets"
-      Effect = "Allow"
-      Action = ["s3:*"]
-      Resource = [
-        "arn:aws:s3:::np-service-*",
-        "arn:aws:s3:::np-service-*/*",
-      ]
-    }]
+    Statement = concat(
+      [{
+        Sid    = "ManageStateBuckets"
+        Effect = "Allow"
+        Action = ["s3:*"]
+        Resource = [
+          "arn:aws:s3:::np-service-*",
+          "arn:aws:s3:::np-service-*/*",
+        ]
+      }],
+      local.shared_state_statements,
+    )
   })
 
   tags = local.iam_default_tags

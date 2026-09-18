@@ -57,7 +57,24 @@ module "dynamodb_requirements" {
 
 ## How it works
 
-Every service instance keeps its Terraform state in its own S3 bucket (`np-service-<service-id>`), created on demand and removed when the service is deleted. Links use the same bucket under a separate key, so creating or removing a link never touches the table state.
+Set `DYNAMO_S3_STATE_BUCKET` on the agent to the name of an existing S3 bucket, and every service instance keeps its Terraform state there under `services/<service-id>/`. Links use the same prefix under a separate key, so creating or removing a link never touches the table state. Deleting a service removes only its own prefix; the bucket is never touched.
+
+The bucket must already exist — the service does not create it. Grant the permissions role access to it by passing `state_bucket_name` to the `specs/requirements/aws` module.
+
+If `DYNAMO_S3_STATE_BUCKET` is left unset, the service falls back to creating one bucket per instance (`np-service-<service-id>`) and deleting it with the service. That behaviour is **deprecated** and logs a warning on every run. To move an existing instance onto a shared bucket:
+
+```bash
+aws s3 cp "s3://np-service-<service-id>/terraform.tfstate" \
+          "s3://<shared-bucket>/services/<service-id>/terraform.tfstate"
+
+# links, if the instance has any
+aws s3 cp --recursive "s3://np-service-<service-id>/links/" \
+                      "s3://<shared-bucket>/services/<service-id>/links/"
+
+aws s3 rb "s3://np-service-<service-id>" --force
+```
+
+Copy the state before the next action runs. An action that finds no state at the new prefix will try to create a table that already exists.
 
 Before any AWS call, each workflow assumes the permissions role resolved from the IAM provider. When no role is configured the agent's own credentials are used, which is what makes local testing work.
 

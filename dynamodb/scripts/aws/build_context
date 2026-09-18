@@ -115,28 +115,54 @@ fi
 echo "Using region: ${REGION}"
 export REGION
 
-# --- Ensure per-instance tfstate bucket exists ------------------------------
-# Each service instance gets its own S3 bucket so state is isolated and the
-# bucket name is deterministic (reconstructable from SERVICE_ID alone).
+# --- Resolve where the tofu state lives -------------------------------------
+# DYNAMO_S3_STATE_BUCKET names an existing bucket shared by every service
+# instance, each under its own key prefix. Leaving it unset falls back to one
+# bucket per instance, which is deprecated. Set-but-empty is a configuration
+# error rather than a silent fallback.
 
-TFSTATE_BUCKET="np-service-${SERVICE_ID}"
-
-if ! aws s3api head-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION" 2>/dev/null; then
-  echo "Creating tfstate bucket: ${TFSTATE_BUCKET}"
-  if [ "$REGION" = "us-east-1" ]; then
-    aws s3api create-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION"
-  else
-    aws s3api create-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION" \
-      --create-bucket-configuration LocationConstraint="$REGION"
+if [ -n "${DYNAMO_S3_STATE_BUCKET+set}" ]; then
+  if [ -z "$DYNAMO_S3_STATE_BUCKET" ]; then
+    echo "ERROR: DYNAMO_S3_STATE_BUCKET is set but empty." >&2
+    echo "       Set it to the name of an existing bucket, or unset it to fall back" >&2
+    echo "       to the deprecated per-instance bucket." >&2
+    exit 1
   fi
-  aws s3api put-bucket-versioning --bucket "$TFSTATE_BUCKET" \
-    --versioning-configuration Status=Enabled
-  echo "Bucket ${TFSTATE_BUCKET} created with versioning enabled."
+
+  TFSTATE_BUCKET="$DYNAMO_S3_STATE_BUCKET"
+  TFSTATE_KEY_PREFIX="services/${SERVICE_ID}/"
+
+  if ! aws s3api head-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION" >/dev/null 2>&1; then
+    echo "ERROR: the state bucket ${TFSTATE_BUCKET} does not exist or is not reachable from ${REGION}." >&2
+    exit 1
+  fi
+
+  echo "Using shared state bucket: ${TFSTATE_BUCKET} (prefix ${TFSTATE_KEY_PREFIX})"
 else
-  echo "Using existing tfstate bucket: ${TFSTATE_BUCKET}"
+  TFSTATE_BUCKET="np-service-${SERVICE_ID}"
+  TFSTATE_KEY_PREFIX=""
+
+  echo "WARNING: DYNAMO_S3_STATE_BUCKET is not set, so this service is creating its own" >&2
+  echo "         bucket per instance. That is deprecated — point it at an existing" >&2
+  echo "         shared bucket instead." >&2
+
+  if ! aws s3api head-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION" 2>/dev/null; then
+    echo "Creating tfstate bucket: ${TFSTATE_BUCKET}"
+    if [ "$REGION" = "us-east-1" ]; then
+      aws s3api create-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION"
+    else
+      aws s3api create-bucket --bucket "$TFSTATE_BUCKET" --region "$REGION" \
+        --create-bucket-configuration LocationConstraint="$REGION"
+    fi
+    aws s3api put-bucket-versioning --bucket "$TFSTATE_BUCKET" \
+      --versioning-configuration Status=Enabled
+    echo "Bucket ${TFSTATE_BUCKET} created with versioning enabled."
+  else
+    echo "Using existing tfstate bucket: ${TFSTATE_BUCKET}"
+  fi
 fi
 
-export TFSTATE_BUCKET
+export TFSTATE_BUCKET TFSTATE_KEY_PREFIX
 
 # --- Set Terraform execution variables --------------------------------------
 
@@ -145,7 +171,7 @@ mkdir -p "$OUTPUT_DIR"
 
 export TOFU_MODULE_DIR="$SERVICE_PATH/deployment"
 
-export TOFU_INIT_VARIABLES="-backend-config=bucket=${TFSTATE_BUCKET} -backend-config=key=terraform.tfstate -backend-config=region=${REGION} -backend-config=use_lockfile=true"
+export TOFU_INIT_VARIABLES="-backend-config=bucket=${TFSTATE_BUCKET} -backend-config=key=${TFSTATE_KEY_PREFIX}terraform.tfstate -backend-config=region=${REGION} -backend-config=use_lockfile=true"
 
 # --- Complex variables go through a file, not the command line --------------
 # do_tofu runs "tofu apply $TOFU_VARIABLES" unquoted, so the shell word-splits
