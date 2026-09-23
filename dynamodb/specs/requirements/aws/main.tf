@@ -108,9 +108,9 @@ resource "aws_iam_policy" "nullplatform_dynamodb_iam" {
 }
 
 # --- Terraform state ----------------------------------------------------------
-# One bucket per service instance, created on the fly by build_context and
-# removed by delete_tfstate_bucket. use_lockfile=true keeps the lock as an
-# object inside the same bucket, so no DynamoDB lock table is involved.
+# The operator names the bucket; every instance lives under its own key prefix
+# inside it. use_lockfile=true keeps the lock as an object in the same bucket,
+# so no DynamoDB lock table is involved.
 resource "aws_iam_policy" "nullplatform_dynamodb_state" {
   count = local.iam_create ? 1 : 0
 
@@ -118,16 +118,8 @@ resource "aws_iam_policy" "nullplatform_dynamodb_state" {
   description = "Terraform state bucket management for the nullplatform aws-dynamodb service"
 
   policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid    = "ManageStateBuckets"
-      Effect = "Allow"
-      Action = ["s3:*"]
-      Resource = [
-        "arn:aws:s3:::np-service-*",
-        "arn:aws:s3:::np-service-*/*",
-      ]
-    }]
+    Version   = "2012-10-17"
+    Statement = local.shared_state_statements
   })
 
   tags = local.iam_default_tags

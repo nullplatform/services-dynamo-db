@@ -1,0 +1,13 @@
+name: tests-state-bucket
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  state-bucket:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/state_bucket.sh

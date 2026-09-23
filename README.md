@@ -46,8 +46,9 @@ dynamodb/
 
 ```hcl
 module "dynamodb_requirements" {
-  source       = "git::https://github.com/nullplatform/services-dynamo-db.git//dynamodb/specs/requirements/aws?ref=main"
-  cluster_name = "<your-cluster>"
+  source            = "git::https://github.com/nullplatform/services-dynamo-db.git//dynamodb/specs/requirements/aws?ref=main"
+  cluster_name      = "<your-cluster>"
+  state_bucket_name = "<your-existing-state-bucket>"
 }
 ```
 
@@ -57,7 +58,26 @@ module "dynamodb_requirements" {
 
 ## How it works
 
-Every service instance keeps its Terraform state in its own S3 bucket (`np-service-<service-id>`), created on demand and removed when the service is deleted. Links use the same bucket under a separate key, so creating or removing a link never touches the table state.
+Set `DYNAMO_S3_STATE_BUCKET` on the agent to the name of an existing S3 bucket, and every service instance keeps its Terraform state there under `services/dynamodb/<service-id>/`. Links use the same prefix under a separate key, so creating or removing a link never touches the table state. Deleting a service removes only its own prefix; the bucket is never touched.
+
+The bucket must already exist — the service does not create it, and any name works. Pass it as `state_bucket_name` to the `specs/requirements/aws` module, which grants the role access to that bucket and nothing else.
+
+`DYNAMO_S3_STATE_BUCKET` is required. Without it every action fails before touching AWS.
+
+Earlier versions created one bucket per instance (`np-service-<service-id>`) and deleted it with the service. That is gone. **Instances provisioned by those versions must have their state moved before the next action runs**, or tofu will start from an empty state and try to create a table that already exists:
+
+```bash
+aws s3 cp "s3://np-service-<service-id>/terraform.tfstate" \
+          "s3://<shared-bucket>/services/dynamodb/<service-id>/terraform.tfstate"
+
+# links, if the instance has any
+aws s3 cp --recursive "s3://np-service-<service-id>/links/" \
+                      "s3://<shared-bucket>/services/dynamodb/<service-id>/links/"
+
+aws s3 rb "s3://np-service-<service-id>" --force
+```
+
+The old bucket can go once the copy is verified.
 
 Before any AWS call, each workflow assumes the permissions role resolved from the IAM provider. When no role is configured the agent's own credentials are used, which is what makes local testing work.
 
