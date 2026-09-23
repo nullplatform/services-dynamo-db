@@ -6,6 +6,7 @@ BUILD_CONTEXT="${1:-dynamodb/scripts/aws/build_context}"
 DELETE_STATE="${2:-dynamodb/scripts/aws/delete_tfstate_objects}"
 BUCKET_VAR="DYNAMO_S3_STATE_BUCKET"
 SERVICE_ID="11111111-2222-3333-4444-555555555555"
+SERVICE_TYPE="dynamodb"
 PASS=0
 FAIL=0
 
@@ -154,12 +155,12 @@ if [ "$check_bucket" = "shared-state" ]; then
 else
 	check "uses the configured bucket" "bad" "got '$check_bucket'"
 fi
-if [ "$check_prefix" = "services/${SERVICE_ID}/" ]; then
-	check "prefixes the key with the service id" "ok"
+if [ "$check_prefix" = "services/${SERVICE_TYPE}/${SERVICE_ID}/" ]; then
+	check "prefixes the key with the service type and id" "ok"
 else
-	check "prefixes the key with the service id" "bad" "got '$check_prefix'"
+	check "prefixes the key with the service type and id" "bad" "got '$check_prefix'"
 fi
-if echo "$check_init" | grep -qF -- "-backend-config=key=services/${SERVICE_ID}/terraform.tfstate"; then
+if echo "$check_init" | grep -qF -- "-backend-config=key=services/${SERVICE_TYPE}/${SERVICE_ID}/terraform.tfstate"; then
 	check "backend key lands under the prefix" "ok"
 else
 	check "backend key lands under the prefix" "bad" "got '$check_init'"
@@ -239,8 +240,8 @@ teardown_sandbox
 
 echo "=== delete: empties only this prefix ==="
 setup_sandbox state-bucket
-out="$(run_delete_state set shared-state "services/${SERVICE_ID}/")"
-if grep -q -- "--prefix services/${SERVICE_ID}/" "$SANDBOX/aws.log"; then
+out="$(run_delete_state set shared-state "services/${SERVICE_TYPE}/${SERVICE_ID}/")"
+if grep -q -- "--prefix services/${SERVICE_TYPE}/${SERVICE_ID}/" "$SANDBOX/aws.log"; then
 	check "scopes the listing to its own prefix" "ok"
 else
 	check "scopes the listing to its own prefix" "bad" "$(cat "$SANDBOX/aws.log" | tr '\n' '|')"
