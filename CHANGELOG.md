@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1](https://github.com/nullplatform/services-dynamo-db/compare/v0.4.0...v0.4.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* install the pinned tofu when the cached one is older ([e779caf](https://github.com/nullplatform/services-dynamo-db/commit/e779caf6af91652d6df9e1a5c071e2471d1039ec))
+* reject pre-1.10 tofu so a stale /tmp cache cannot break init ([cb042f3](https://github.com/nullplatform/services-dynamo-db/commit/cb042f3d199c3b8a00b86b1c7c20cae8a4716b84))
+* require the pinned tofu version instead of a 1.10 floor ([f8715e2](https://github.com/nullplatform/services-dynamo-db/commit/f8715e22c9a276f4d5f7b3e6acd307b34195c18e))
+
 ## [0.4.0](https://github.com/nullplatform/services-dynamo-db/compare/v0.3.1...v0.4.0) (2026-09-18)
 
 
