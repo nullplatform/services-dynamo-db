@@ -143,3 +143,6 @@ dist
 *.tfplan
 crash.log
 crash.*.log
+
+# Claude Code local workspace
+.claude
