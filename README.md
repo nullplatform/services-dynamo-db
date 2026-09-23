@@ -62,7 +62,9 @@ Set `DYNAMO_S3_STATE_BUCKET` on the agent to the name of an existing S3 bucket, 
 
 The bucket must already exist — the service does not create it, and any name works. Pass it as `state_bucket_name` to the `specs/requirements/aws` module, which grants the role access to that bucket and nothing else.
 
-If `DYNAMO_S3_STATE_BUCKET` is left unset, the service falls back to creating one bucket per instance (`np-service-<service-id>`) and deleting it with the service. That behaviour is **deprecated** and logs a warning on every run. The role is not granted access to those buckets unless you also set `grant_legacy_per_instance_buckets = true`, so set it while migrating and drop it once you are done. To move an existing instance onto a shared bucket:
+`DYNAMO_S3_STATE_BUCKET` is required. Without it every action fails before touching AWS.
+
+Earlier versions created one bucket per instance (`np-service-<service-id>`) and deleted it with the service. That is gone. **Instances provisioned by those versions must have their state moved before the next action runs**, or tofu will start from an empty state and try to create a table that already exists:
 
 ```bash
 aws s3 cp "s3://np-service-<service-id>/terraform.tfstate" \
@@ -75,7 +77,7 @@ aws s3 cp --recursive "s3://np-service-<service-id>/links/" \
 aws s3 rb "s3://np-service-<service-id>" --force
 ```
 
-Copy the state before the next action runs. An action that finds no state at the new prefix will try to create a table that already exists.
+The old bucket can go once the copy is verified.
 
 Before any AWS call, each workflow assumes the permissions role resolved from the IAM provider. When no role is configured the agent's own credentials are used, which is what makes local testing work.
 

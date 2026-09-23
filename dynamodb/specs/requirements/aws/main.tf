@@ -118,11 +118,8 @@ resource "aws_iam_policy" "nullplatform_dynamodb_state" {
   description = "Terraform state bucket management for the nullplatform aws-dynamodb service"
 
   policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = concat(
-      local.shared_state_statements,
-      local.legacy_state_statements,
-    )
+    Version   = "2012-10-17"
+    Statement = local.shared_state_statements
   })
 
   tags = local.iam_default_tags

@@ -50,32 +50,6 @@ locals {
     },
   ]
 
-  # The deprecated bucket-per-instance layout, off unless an operator is still
-  # migrating instances off it.
-  legacy_state_statements = var.grant_legacy_per_instance_buckets ? [
-    {
-      Sid    = "ManageLegacyPerInstanceBuckets"
-      Effect = "Allow"
-      Action = [
-        "s3:CreateBucket",
-        "s3:DeleteBucket",
-        "s3:PutBucketVersioning",
-        "s3:ListBucket",
-        "s3:ListBucketVersions",
-        "s3:GetBucketLocation",
-        "s3:GetObject",
-        "s3:GetObjectVersion",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:DeleteObjectVersion",
-      ]
-      Resource = [
-        "arn:aws:s3:::np-service-*",
-        "arn:aws:s3:::np-service-*/*",
-      ]
-    },
-  ] : []
-
   # Default tags applied to every IAM resource
   iam_default_tags = merge(var.iam_resource_tags_json, {
     ManagedBy = "nullplatform-custom-scope-role"
