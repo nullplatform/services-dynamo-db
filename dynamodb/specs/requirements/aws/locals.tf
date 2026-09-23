@@ -27,10 +27,9 @@ locals {
   # keeps the role from being able to touch any other user in the account.
   link_user_path_arn = "arn:aws:iam::${local.account_id}:user/nullplatform/dynamodb/*"
 
-  # Access to the shared state bucket, granted only when one is configured. The
-  # per-instance np-service-* grant stays regardless, since the service still
-  # falls back to it when DYNAMO_S3_STATE_BUCKET is unset.
-  shared_state_statements = var.state_bucket_name == "" ? [] : [
+  # Access to the state bucket the operator names. Nothing here assumes a bucket
+  # naming convention: the role is granted on that bucket and nothing else.
+  shared_state_statements = [
     {
       Sid      = "ListSharedStateBucket"
       Effect   = "Allow"
@@ -50,6 +49,32 @@ locals {
       Resource = "arn:aws:s3:::${var.state_bucket_name}/*"
     },
   ]
+
+  # The deprecated bucket-per-instance layout, off unless an operator is still
+  # migrating instances off it.
+  legacy_state_statements = var.grant_legacy_per_instance_buckets ? [
+    {
+      Sid    = "ManageLegacyPerInstanceBuckets"
+      Effect = "Allow"
+      Action = [
+        "s3:CreateBucket",
+        "s3:DeleteBucket",
+        "s3:PutBucketVersioning",
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:GetBucketLocation",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion",
+      ]
+      Resource = [
+        "arn:aws:s3:::np-service-*",
+        "arn:aws:s3:::np-service-*/*",
+      ]
+    },
+  ] : []
 
   # Default tags applied to every IAM resource
   iam_default_tags = merge(var.iam_resource_tags_json, {
