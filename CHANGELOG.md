@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/nullplatform/services-dynamo-db/compare/v0.4.2...v0.4.3) (2026-10-02)
+
+
+### Bug Fixes
+
+* **deps:** update dependency opentofu/opentofu to v1.13.1 ([#22](https://github.com/nullplatform/services-dynamo-db/issues/22)) ([daabbc2](https://github.com/nullplatform/services-dynamo-db/commit/daabbc29a81b5ff7af699b93125c07c5a0fe8ef3))
+
 ## [0.4.2](https://github.com/nullplatform/services-dynamo-db/compare/v0.4.1...v0.4.2) (2026-10-01)
 
 
