@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/nullplatform/services-dynamo-db/compare/v0.4.3...v0.4.4) (2026-10-02)
+
+
+### Bug Fixes
+
+* **deps:** bump actions/checkout from 4 to 7 ([#19](https://github.com/nullplatform/services-dynamo-db/issues/19)) ([52ed0a3](https://github.com/nullplatform/services-dynamo-db/commit/52ed0a32424d2c19c33a8d227534b84c618a3796))
+
 ## [0.4.3](https://github.com/nullplatform/services-dynamo-db/compare/v0.4.2...v0.4.3) (2026-10-02)
 
 
