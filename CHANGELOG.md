@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+
+### Features
+
+* metrics for the table in the service's metrics view: consumed read and write capacity units, read and write throttle events
+* the requirements module grants the agent role `cloudwatch:GetMetricStatistics` so metrics show
+
 ## [0.4.4](https://github.com/nullplatform/services-dynamo-db/compare/v0.4.3...v0.4.4) (2026-10-02)
 
 
