@@ -8,6 +8,19 @@
 * metrics for the table in the service's metrics view: consumed read and write capacity units, read and write throttle events
 * the requirements module grants the agent role `cloudwatch:GetMetricStatistics` so metrics show
 
+## [0.5.0](https://github.com/nullplatform/services-dynamo-db/compare/v0.4.4...v0.5.0) (2026-10-06)
+
+
+### Features
+
+* run the worker image as a non-root user ([1bffd70](https://github.com/nullplatform/services-dynamo-db/commit/1bffd70f29aeb874893ffb6804da58519c6fd621))
+* run the worker image as a non-root user ([c5815cc](https://github.com/nullplatform/services-dynamo-db/commit/c5815cc39978a8d19cd2ebdb773ea6baef2cfab3))
+
+
+### Bug Fixes
+
+* hand HOME to the runtime user ([dfdfe6f](https://github.com/nullplatform/services-dynamo-db/commit/dfdfe6f80386789a73677bdcf11efa11ea52d372))
+
 ## [0.4.4](https://github.com/nullplatform/services-dynamo-db/compare/v0.4.3...v0.4.4) (2026-10-02)
 
 
