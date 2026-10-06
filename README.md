@@ -14,6 +14,7 @@ Creates a DynamoDB table per service instance and hands applications scoped cred
 | TTL | Automatic item expiry on a timestamp attribute |
 | Deletion protection | Must be turned off before deleting the service |
 | Streams | Always enabled, `NEW_AND_OLD_IMAGES` |
+| Metrics | Four CloudWatch metrics of the table, queried for the time range picked in the UI |
 
 ## Links
 
@@ -52,9 +53,11 @@ module "dynamodb_requirements" {
 }
 ```
 
+The agent role itself needs `cloudwatch:GetMetricStatistics` on `*`: metrics run on the agent's credentials, never on the permissions role, so they cost a single AWS call. The module attaches that policy to `agent_role_arn` and `additional_agent_role_arns`; set `attach_metrics_policy_to_agent_roles = false` if the agent role is managed elsewhere.
+
 **2. Publish the role.** Register `permissions_role_arn` in the nullplatform AWS IAM provider under the selector **`dynamodb`**, and allow the agent role to assume it.
 
-**3. Register the service.** Point a `service_definition` at this repository with `service_path = "dynamodb"`, and add it to the agent's repository list.
+**3. Register the service.** Point a `service_definition` at this repository with `service_path = "dynamodb"`, and add it to the agent's repository list. The agent's notification channel must be subscribed to the `service` and `telemetry` sources (`channel_sources = ["service", "telemetry"]` in `service_definition_agent_association`); without `telemetry` the service shows no metrics.
 
 ## How it works
 
@@ -82,6 +85,23 @@ The old bucket can go once the copy is verified.
 Before any AWS call, each workflow assumes the permissions role resolved from the IAM provider. When no role is configured the agent's own credentials are used, which is what makes local testing work.
 
 The table name is computed once from the service name and then frozen in the service attributes. Renaming the service does not rename the table — the name is a ForceNew attribute in AWS and changing it would destroy the table along with its data.
+
+## Metrics
+
+`metric:list` and `metric:data` notifications run `scripts/aws/list_metrics` and `scripts/aws/fetch_metric` directly from `entrypoint/metric`, without `np service workflow exec` and without assuming the permissions role. `metric:data` makes one AWS call, to CloudWatch: `AWS/DynamoDB` with the dimension `TableName = table_name`, in the `table_region` of the service, for the requested `start_time`, `end_time` and `period` (rounded up to a multiple of 60 seconds).
+
+| Metric | Statistic | Unit |
+| :---- | :---- | :---- |
+| `ConsumedReadCapacityUnits` | Sum | count |
+| `ConsumedWriteCapacityUnits` | Sum | count |
+| `ReadThrottleEvents` | Sum | count |
+| `WriteThrottleEvents` | Sum | count |
+
+Only metrics CloudWatch publishes with `TableName` alone are offered. Latency, system errors and returned items need the `Operation` dimension, and the provisioned capacity metrics exist only for provisioned tables, so none of them are listed. CloudWatch publishes no datapoint while a table is idle, so these graphs are empty until the table has traffic.
+
+A service whose table does not exist yet returns an empty series. A CloudWatch error fails the request instead of showing an empty graph.
+
+The service has no logs: `log:*` notifications run `scripts/aws/read_logs`, which answers with no entries. Telemetry scripts print nothing but their result, since stdout is the response. Workflow overrides do not apply to telemetry.
 
 ## Triggers
 

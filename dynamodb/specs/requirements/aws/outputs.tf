@@ -12,3 +12,8 @@ output "permissions_role_id" {
   description = "ID of the permissions role"
   value       = local.iam_create ? aws_iam_role.nullplatform_dynamodb[0].id : ""
 }
+
+output "metrics_policy_arn" {
+  description = "ARN of the CloudWatch read policy attached to the agent roles for the service metrics"
+  value       = local.attach_metrics_policy ? aws_iam_policy.nullplatform_dynamodb_metrics[0].arn : ""
+}
