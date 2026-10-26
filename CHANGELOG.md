@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.2](https://github.com/nullplatform/services-dynamo-db/compare/v0.5.1...v0.5.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **deps:** bump nullplatform/scopes/worker-bridge from 2.0.3 to 2.0.6 ([14d76a5](https://github.com/nullplatform/services-dynamo-db/commit/14d76a539fe2feb18f2cb7a0b57a5fc2a57914c5))
+* **deps:** bump nullplatform/scopes/worker-bridge from 2.0.3 to 2.0.6 ([f962ee2](https://github.com/nullplatform/services-dynamo-db/commit/f962ee228b9c234b90b38296f0b99cbe08406d0c))
+
 ## [0.5.1](https://github.com/nullplatform/services-dynamo-db/compare/v0.5.0...v0.5.1) (2026-10-16)
 
 
