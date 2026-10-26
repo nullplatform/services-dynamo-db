@@ -15,6 +15,10 @@ locals {
 
   account_id = data.aws_caller_identity.current.account_id
 
+  agent_role_names = toset([for arn in concat([local.agent_role_arn], var.additional_agent_role_arns) : regex("[^/]+$", arn)])
+
+  attach_metrics_policy = local.iam_create && var.attach_metrics_policy_to_agent_roles
+
   # Tables the service manages, plus their indexes and streams. Scoped by the
   # name prefix so the role cannot touch tables created outside nullplatform.
   managed_table_arns = [

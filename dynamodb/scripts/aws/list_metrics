@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+
+RESULT=$(jq -n -c '{
+  results: [
+    {name: "ConsumedReadCapacityUnits", title: "Consumed read capacity units", unit: "count"},
+    {name: "ConsumedWriteCapacityUnits", title: "Consumed write capacity units", unit: "count"},
+    {name: "ReadThrottleEvents", title: "Read throttle events", unit: "count"},
+    {name: "WriteThrottleEvents", title: "Write throttle events", unit: "count"}
+  ] | map(. + {available_filters: [], available_group_by: []})
+}')
+
+echo "$RESULT"
