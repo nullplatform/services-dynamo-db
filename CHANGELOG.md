@@ -8,6 +8,13 @@
 * metrics for the table in the service's metrics view: consumed read and write capacity units, read and write throttle events
 * the requirements module grants the agent role `cloudwatch:GetMetricStatistics` so metrics show
 
+## [0.6.1](https://github.com/nullplatform/services-dynamo-db/compare/v0.6.0...v0.6.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **deps:** bump nullplatform/scopes/worker-bridge from 2.0.6 to 2.0.7 ([#36](https://github.com/nullplatform/services-dynamo-db/issues/36)) ([bcf08e2](https://github.com/nullplatform/services-dynamo-db/commit/bcf08e282e76a9386984dfdec51a5de7fd680c5b))
+
 ## [0.6.0](https://github.com/nullplatform/services-dynamo-db/compare/v0.5.2...v0.6.0) (2026-10-26)
 
 
