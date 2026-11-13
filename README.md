@@ -57,12 +57,12 @@ Installing it touches the same three layers as registering a service yourself, a
 | nullplatform (nullplatform API key) | The installation of the package and the agent channel | tofu-modules' `service_package_installation` |
 | bindings | The role under selector `dynamodb` in your IAM provider | your `aws-iam-configuration` provider |
 
-Reference both modules of this repository at the same release tag:
+Pick ONE release of this repository (the latest is on its [releases page](https://github.com/nullplatform/services-dynamo-db/releases)) and use its version in both places below: the IAM role is the one the worker of that same release expects.
 
 ```hcl
 # ── infrastructure layer ─────────────────────────────────────────────
 module "dynamodb_requirements" {
-  source            = "git::https://github.com/nullplatform/services-dynamo-db.git//dynamodb/specs/requirements/aws?ref=v0.6.2"
+  source            = "git::https://github.com/nullplatform/services-dynamo-db.git//dynamodb/specs/requirements/aws?ref=vX.Y.Z"
   cluster_name      = "<your-cluster>"
   state_bucket_name = "<your-existing-state-bucket>"
 }
@@ -75,11 +75,11 @@ module "dynamodb_requirements" {
 # The same module a catalog entry with `install_package` becomes. For a
 # service the installation is the whole nullplatform side, channel included.
 module "dynamodb" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/service_package_installation?ref=v9.12.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/service_package_installation?ref=v9.16.0"
 
   nrn                  = var.nrn
   package_slug         = "np-aws-dynamodb"
-  package_version      = "0.7.0"                  # the release you install; upgrading = moving it
+  package_version      = "X.Y.Z" # the same release, without the v
   agent_tags_selectors = { cluster = "runtime" } # must match the agent's TAGS
   # channel_sources defaults to ["service", "telemetry"]: without telemetry the
   # service shows no metrics.
