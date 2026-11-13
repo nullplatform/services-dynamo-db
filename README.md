@@ -30,7 +30,9 @@ dynamodb/
 ├── specs/
 │   ├── service-spec.json.tpl      # capabilities shown to the developer
 │   ├── links/connect.json.tpl
+│   ├── links/trigger.json.tpl
 │   └── requirements/aws/          # IAM role the agent assumes
+├── publish/                       # publishes the service as a package (release workflow only)
 ├── deployment/                    # the table
 ├── permissions/                   # connect link: per-link IAM user
 ├── trigger/                       # trigger link: stream to Lambda
@@ -41,23 +43,107 @@ dynamodb/
 └── values.yaml                    # static config, not exposed in the UI
 ```
 
-## Installation
+## Install in your organization
 
-**1. Create the permissions role.** Apply `dynamodb/specs/requirements/aws` in the target AWS account:
+The service is published once as the package `np-aws-dynamodb` (specification "AWS DynamoDB"), visible to every organization. You do not copy its specs: you install the package and use it read-only.
+
+If you need to change the specification, the links, the actions or the workflows themselves, see [the global package, or your own fork](#two-ways-to-run-this-service-the-global-package-or-your-own-fork) below before installing anything.
+
+Installing it touches the same three layers as registering a service yourself, and only the nullplatform layer changes:
+
+| Layer | What | Module |
+|---|---|---|
+| infrastructure (AWS credentials) | The IAM role the service assumes, and the metrics policy of the agent role | [`dynamodb/specs/requirements/aws`](./dynamodb/specs/requirements/aws) |
+| nullplatform (nullplatform API key) | The installation of the package and the agent channel | tofu-modules' `service_package_installation` |
+| bindings | The role under selector `dynamodb` in your IAM provider | your `aws-iam-configuration` provider |
+
+Reference both modules of this repository at the same release tag:
 
 ```hcl
+# ── infrastructure layer ─────────────────────────────────────────────
 module "dynamodb_requirements" {
-  source            = "git::https://github.com/nullplatform/services-dynamo-db.git//dynamodb/specs/requirements/aws?ref=main"
+  source            = "git::https://github.com/nullplatform/services-dynamo-db.git//dynamodb/specs/requirements/aws?ref=v0.6.2"
   cluster_name      = "<your-cluster>"
   state_bucket_name = "<your-existing-state-bucket>"
 }
+
+# The agent role must be allowed to assume it: add it to the assume_role_arns
+# of tofu-modules' infrastructure/aws/iam/agent.
+#   assume_role_arns = [..., module.dynamodb_requirements.permissions_role_arn]
+
+# ── nullplatform layer ───────────────────────────────────────────────
+# The same module a catalog entry with `install_package` becomes. For a
+# service the installation is the whole nullplatform side, channel included.
+module "dynamodb" {
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/service_package_installation?ref=v9.12.0"
+
+  nrn                  = var.nrn
+  package_slug         = "np-aws-dynamodb"
+  package_version      = "0.7.0"                  # the release you install; upgrading = moving it
+  agent_tags_selectors = { cluster = "runtime" } # must match the agent's TAGS
+  # channel_sources defaults to ["service", "telemetry"]: without telemetry the
+  # service shows no metrics.
+}
+# Keeping channels in a separate bindings layer instead? Use
+# nullplatform/package_installation here and service_definition_agent_association
+# there, with package_slug = "np-aws-dynamodb" and channel_sources = ["service", "telemetry"].
+
+# ── bindings layer ───────────────────────────────────────────────────
+# One aws-iam-configuration per NRN and dimensions: add the entry to the list
+# your IAM provider already has.
+#   { selector = "dynamodb", arn = module.dynamodb_requirements.permissions_role_arn }
 ```
 
-The agent role itself needs `cloudwatch:GetMetricStatistics` on `*`: metrics run on the agent's credentials, never on the permissions role, so they cost a single AWS call. The module attaches that policy to `agent_role_arn` and `additional_agent_role_arns`; set `attach_metrics_policy_to_agent_roles = false` if the agent role is managed elsewhere.
+The agent role itself needs `cloudwatch:GetMetricStatistics` on `*`: metrics run on the agent's credentials, never on the permissions role, so they cost a single AWS call. The requirements module attaches that policy to `agent_role_arn` and `additional_agent_role_arns`; set `attach_metrics_policy_to_agent_roles = false` if the agent role is managed elsewhere.
 
-**2. Publish the role.** Register `permissions_role_arn` in the nullplatform AWS IAM provider under the selector **`dynamodb`**, and allow the agent role to assume it.
+The service assumes the role it finds under selector `dynamodb` in the IAM provider closest to its NRN. To upgrade, move the release in both layers: `ref` of the requirements module and `package_version` of the installation. See tofu-modules' [`service_package_installation`](https://github.com/nullplatform/tofu-modules/tree/main/nullplatform/service_package_installation) for its inputs and outputs.
 
-**3. Register the service.** Point a `service_definition` at this repository with `service_path = "dynamodb"`, and add it to the agent's repository list. The agent's notification channel must be subscribed to the `service` and `telemetry` sources (`channel_sources = ["service", "telemetry"]` in `service_definition_agent_association`); without `telemetry` the service shows no metrics.
+Prerequisites: an agent whose `TAGS` match the channel's `tags_selectors` and with `public.ecr.aws/nullplatform/*` in `worker.allowedRegistries`, and an AWS cloud provider exposing `account.region` at the NRN or above it.
+
+### Already registered with `service_definition`?
+
+Organizations that registered this service with `service_definition` have their own copy: specification "AWS DynamoDB" (slug `aws-dynamodb`) and a channel filtered to that slug. The global package uses other names (`np-aws-dynamodb`), so both live side by side in one organization:
+
+- In the nullplatform layer, add the installation (the module above, or a catalog entry with `install_package`) next to your `service_definition`. Its outputs have the same names, so the map your bindings layer reads keeps its shape, and its channel routes only the global slug: your existing channel keeps serving your copy.
+- Keep your IAM role: both specifications assume the role under selector `dynamodb`, with the same permissions. The infrastructure layer does not change.
+- Existing services stay on your copy (a service cannot move to another specification). Create new services from "AWS DynamoDB", and remove your `service_definition` and its channel once no service uses them.
+
+### Two ways to run this service: the global package, or your own fork
+
+| | **Global package** (default) | **Your own fork** |
+|---|---|---|
+| Specs and code | Maintained by nullplatform in this repository | Maintained by you, in your fork |
+| What you install | The package `np-aws-dynamodb`, read-only | A package you publish in your organization, or a registered copy |
+| Updates | A new release: move the version | Only when you merge upstream into your fork |
+| When | Always, unless you need changes to the specification, the links, the actions or the workflows | Substantial changes: new actions or links, another specification (attributes, validations), workflows that behave differently |
+
+**Use the global package.** It is the only way to keep receiving fixes, features and security patches: each one arrives as a release of this repository and you take it by moving the installed version. The section above is that path; its two forms are the same module:
+
+- From a catalog of `service_definition` entries (tofu-modules): the same entry with an `install_package = { slug = "np-aws-dynamodb", version = "X.Y.Z" }` block becomes a `service_package_installation`. For a service the installation is the whole nullplatform side, the agent channel included.
+- From a root of your own: the module call in the section above, with the same inputs.
+
+If something is missing or wrong, open an issue or a pull request here, so every organization gets it.
+
+**Fork only to change what the service is.** A fork means you become the publisher of a different service: you build its worker image, publish its package in your organization and maintain its specs, code and installation. Step by step:
+
+1. **Fork the repository and give the service its own names.** In [`dynamodb/publish/main.tf`](./dynamodb/publish/main.tf): `package_slug` (for example `acme-aws-dynamodb`), `service_name` ("Acme DynamoDB") and `service_slug` (`acme-aws-dynamodb`). The slug must differ from `np-aws-dynamodb`, and from `aws-dynamodb` if you also run a copy: agent channels route by the specification slug, so two services with one slug share a worker. Link specifications keep their own slugs; give them yours with `link_slugs` only if they collide inside your organization.
+2. **Publish into your organization, not every organization.** In the same file, `visible_to` goes from `["organization=*"]` to `[var.publisher_nrn]`: only the platform organization may publish globally, and your package is yours. Point `image_registry` / `image_repository` ([`dynamodb/publish/variables.tf`](./dynamodb/publish/variables.tf)) at your registry.
+3. **Set the release workflow's secrets in your fork**: `ARTIFACT_NP_API_KEY` (a key of your organization, allowed to write artifacts, specifications and packages), `AWS_ROLE_ARN_ECR_PUSH`, `PACKAGE_STATE_AWS_ACCOUNT_ID` (with a role named `github-actions-<repository>-package-state` that may write the state bucket) or `AWS_ROLE_ARN_PACKAGE_STATE` (a role named otherwise), `PACKAGE_TFSTATE_BUCKET` and `PACKAGE_TFSTATE_REGION`, plus the `NP_ARTIFACT_NRN` variable. From then on, each release of your fork builds the image, registers it and publishes a revision of your package ([`release.yml`](./.github/workflows/release.yml)), versioned by its release tag.
+4. **Install your package the same way as the global one**, with your slug in `install_package` and your own agent channel. The IAM role and its selector can stay `dynamodb` as long as the permissions in [`dynamodb/specs/requirements/aws`](./dynamodb/specs/requirements/aws) still fit what your fork does; if they do not, give your fork its own role and selector too.
+
+**Your specs on our image: the shortcut, and why it is risky.** The worker image this repository publishes is a global artifact, so a package of your own may pin it (`lookup = true` with our registry, repository and the digest of one of our releases, as [`dynamodb/publish/main.tf`](./dynamodb/publish/main.tf) does) and change only the specs. It saves you the build, and it is the main trade-off to understand before taking it: the code in that image reads the specification it was released with — the attributes the form collects, the actions and their parameters, the link specifications and what they export — so every change to your specs is a divergence the image does not know about, and the next release of ours assumes specs you no longer have. A service behaves as one thing because its specs and its code are released together; that coupling is the reason the global package carries both, and splitting them puts the breakage on your side, at runtime, with nothing in the platform to warn you. Take the shortcut only for changes the image cannot see, such as descriptions, defaults within the same shape, or visibility; anything the workflows read belongs with a forked image.
+
+Without packages, the classic way still works: register your fork as a copy with `service_definition` pointing at your fork's repository and tag.
+
+What a fork costs, before you take it:
+
+- **Updates stop arriving.** Upstream fixes reach you only when you merge them into your fork yourself.
+- **There is no way back for existing services.** A service cannot move to another specification: services created from your fork's specification stay on it.
+- **You own the operations.** Images, releases, state of the publisher stack and the compatibility of your specs with the agent are yours to keep.
+
+## How the package is published
+
+Every release publishes a new revision of the package from this repository, in the same run that pushes the worker image ([`.github/workflows/release.yml`](./.github/workflows/release.yml)): the `publish-package` job applies [`dynamodb/publish`](./dynamodb/publish), which pins this tag's specs and the image by digest. The package version is the release tag, as for the image.
 
 ## How it works
 
