@@ -8,6 +8,13 @@
 * metrics for the table in the service's metrics view: consumed read and write capacity units, read and write throttle events
 * the requirements module grants the agent role `cloudwatch:GetMetricStatistics` so metrics show
 
+## [0.6.3](https://github.com/nullplatform/services-dynamo-db/compare/v0.6.2...v0.6.3) (2026-11-16)
+
+
+### Bug Fixes
+
+* **deps:** update dependency opentofu/opentofu to v1.13.9 ([#41](https://github.com/nullplatform/services-dynamo-db/issues/41)) ([8df2559](https://github.com/nullplatform/services-dynamo-db/commit/8df2559bcf04e626043223899114b9c5a0074faf))
+
 ## [0.6.2](https://github.com/nullplatform/services-dynamo-db/compare/v0.6.1...v0.6.2) (2026-11-02)
 
 
