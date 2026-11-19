@@ -30,7 +30,9 @@ dynamodb/
 ├── specs/
 │   ├── service-spec.json.tpl      # capabilities shown to the developer
 │   ├── links/connect.json.tpl
+│   ├── links/trigger.json.tpl
 │   └── requirements/aws/          # IAM role the agent assumes
+├── publish/                       # publishes the service as a package (release workflow only)
 ├── deployment/                    # the table
 ├── permissions/                   # connect link: per-link IAM user
 ├── trigger/                       # trigger link: stream to Lambda
@@ -41,23 +43,65 @@ dynamodb/
 └── values.yaml                    # static config, not exposed in the UI
 ```
 
-## Installation
+## Install in your organization
 
-**1. Create the permissions role.** Apply `dynamodb/specs/requirements/aws` in the target AWS account:
+The service is published once as the package `np-aws-dynamodb` (specification "AWS DynamoDB"), visible to every organization. You do not copy its specs: you install the package and use it read-only.
+
+How installing a package works, how it coexists with a copy you registered, how to upgrade, and when to fork instead are in the [package installation guide](https://docs.nullplatform.com/docs/packages/install); this section has what is specific to this service.
+
+Installing it touches the same three layers as registering a service yourself, and only the nullplatform layer changes:
+
+| Layer | What | Module |
+|---|---|---|
+| infrastructure (AWS credentials) | The IAM role the service assumes, and the metrics policy of the agent role | [`dynamodb/specs/requirements/aws`](./dynamodb/specs/requirements/aws) |
+| nullplatform (nullplatform API key) | The installation of the package and the agent channel | tofu-modules' `service_package_installation` |
+| bindings | The role under selector `dynamodb` in your IAM provider | your `aws-iam-configuration` provider |
+
+Pick ONE release of this repository (the latest is on its [releases page](https://github.com/nullplatform/services-dynamo-db/releases)) and use its version in both places below: the IAM role is the one the worker of that same release expects.
 
 ```hcl
+# ── infrastructure layer ─────────────────────────────────────────────
 module "dynamodb_requirements" {
-  source            = "git::https://github.com/nullplatform/services-dynamo-db.git//dynamodb/specs/requirements/aws?ref=main"
+  source            = "git::https://github.com/nullplatform/services-dynamo-db.git//dynamodb/specs/requirements/aws?ref=vX.Y.Z"
   cluster_name      = "<your-cluster>"
   state_bucket_name = "<your-existing-state-bucket>"
 }
+
+# The agent role must be allowed to assume it: add it to the assume_role_arns
+# of tofu-modules' infrastructure/aws/iam/agent.
+#   assume_role_arns = [..., module.dynamodb_requirements.permissions_role_arn]
+
+# ── nullplatform layer ───────────────────────────────────────────────
+# For a service the installation is the whole nullplatform side, channel included.
+module "dynamodb" {
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/service_package_installation?ref=v9.16.0"
+
+  nrn                  = var.nrn
+  package_slug         = "np-aws-dynamodb"
+  package_version      = "X.Y.Z" # the same release, without the v
+  agent_tags_selectors = { cluster = "runtime" } # must match the agent's TAGS
+  # channel_sources defaults to ["service", "telemetry"]: without telemetry the
+  # service shows no metrics.
+}
+# Keeping channels in a separate bindings layer instead? Use
+# nullplatform/package_installation here and service_definition_agent_association
+# there, with package_slug = "np-aws-dynamodb" and channel_sources = ["service", "telemetry"].
+
+# ── bindings layer ───────────────────────────────────────────────────
+# One aws-iam-configuration per NRN and dimensions: add the entry to the list
+# your IAM provider already has.
+#   { selector = "dynamodb", arn = module.dynamodb_requirements.permissions_role_arn }
 ```
 
-The agent role itself needs `cloudwatch:GetMetricStatistics` on `*`: metrics run on the agent's credentials, never on the permissions role, so they cost a single AWS call. The module attaches that policy to `agent_role_arn` and `additional_agent_role_arns`; set `attach_metrics_policy_to_agent_roles = false` if the agent role is managed elsewhere.
+The agent role itself needs `cloudwatch:GetMetricStatistics` on `*`: metrics run on the agent's credentials, never on the permissions role, so they cost a single AWS call. The requirements module attaches that policy to `agent_role_arn` and `additional_agent_role_arns`; set `attach_metrics_policy_to_agent_roles = false` if the agent role is managed elsewhere.
 
-**2. Publish the role.** Register `permissions_role_arn` in the nullplatform AWS IAM provider under the selector **`dynamodb`**, and allow the agent role to assume it.
+The service assumes the role it finds under selector `dynamodb` in the IAM provider closest to its NRN. To upgrade, move the release in both layers: `ref` of the requirements module and `package_version` of the installation. See tofu-modules' [`service_package_installation`](https://github.com/nullplatform/tofu-modules/tree/main/nullplatform/service_package_installation) for its inputs and outputs.
 
-**3. Register the service.** Point a `service_definition` at this repository with `service_path = "dynamodb"`, and add it to the agent's repository list. The agent's notification channel must be subscribed to the `service` and `telemetry` sources (`channel_sources = ["service", "telemetry"]` in `service_definition_agent_association`); without `telemetry` the service shows no metrics.
+Prerequisites: an agent whose `TAGS` match the channel's `tags_selectors`, with `public.ecr.aws/nullplatform/*` in `worker.allowedRegistries` and `np-aws-dynamodb` in its `worker_orchestrated_packages` (the worker then runs with the agent's identity, the one the role trusts), and an AWS cloud provider exposing `account.region` at the NRN or above it.
+
+## How the package is published
+
+Every release publishes a new revision of the package from this repository, in the same run that pushes the worker image ([`.github/workflows/release.yml`](./.github/workflows/release.yml)): the `publish-package` job applies [`dynamodb/publish`](./dynamodb/publish), a stack on tofu-modules' `service_package_publish`, which pins this tag's specs and the image by digest. The package version is the release tag, as for the image.
 
 ## How it works
 
